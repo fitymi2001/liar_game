@@ -262,6 +262,19 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
 .msg .meta b { color: var(--text); margin-right: 6px; }
 .msg .body { overflow-wrap: anywhere; white-space: pre-wrap; }
 .msg.mine .meta b { color: var(--accent); }
+.msg.defense { background: var(--accent-soft); border-radius: 8px; padding: 6px 8px; }
+.defense-box {
+  border: 2px solid var(--accent); background: var(--accent-soft); border-radius: 16px;
+  padding: 18px; text-align: center; margin-bottom: 14px;
+}
+.defense-box .who { font-size: 24px; font-weight: 800; }
+.defense-box .who small { font-size: 14px; font-weight: 600; color: var(--muted); margin-left: 6px; }
+.defense-lines { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 6px; text-align: left; }
+.defense-lines li { background: var(--surface); border-radius: 10px; padding: 8px 12px; overflow-wrap: anywhere; }
+.confirm-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.confirm-row button { padding: 18px 12px; font-size: 18px; }
+.confirm-row button.yes.chosen { background: var(--liar-soft); border-color: var(--liar); color: var(--liar); }
+.confirm-row button.no.chosen { background: var(--citizen-soft); border-color: var(--citizen); color: var(--citizen); }
 .msg.system { text-align: center; font-size: 12px; color: var(--muted); background: var(--surface-2); border-radius: 8px; padding: 4px 8px; }
 .chat form { display: flex; gap: 6px; }
 .chat form input { flex: 1; min-width: 0; }
@@ -308,6 +321,7 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
         <li>차례대로 한 문장 힌트(20초) → 토론(60초) → 비공개 투표(20초).</li>
         <li>시민이 지목되면 라이어 승리. 라이어가 지목되면 20초 안에 제시어를 맞혀야 이깁니다.</li>
         <li>최다 득표 동률이면 후보끼리 15초 재투표, 또 동률이면 라이어 승리.</li>
+        <li>최다 득표자는 10초 최후의 변론 후 5초 찬반 투표. 찬성이 더 많아야 지목 확정, 아니면 라이어 승리.</li>
         <li>이긴 사람마다 1점, 같은 방에서 점수가 누적됩니다.</li>
       </ul>
     </details>
@@ -355,9 +369,10 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
 (() => {
   'use strict';
   const $ = (id) => document.getElementById(id);
-  const CHAT_PHASES = ['lobby', 'discussion', 'result'];
-  const PHASE_LABEL = { lobby: '대기실', role: '역할 확인', hint: '힌트 발표', discussion: '토론', vote: '투표', revote: '재투표', guess: '라이어의 추측', result: '결과' };
+  const CHAT_PHASES = ['lobby', 'discussion', 'defense', 'result'];
+  const PHASE_LABEL = { lobby: '대기실', role: '역할 확인', hint: '힌트 발표', discussion: '토론', vote: '투표', revote: '재투표', defense: '최후의 변론', confirm: '찬반 투표', guess: '라이어의 추측', result: '결과' };
   const REASON = {
+    acquitted: (n) => `${n.accused}님이 최후의 변론 후 찬반 투표에서 부결되어, 라이어를 잡지 못했습니다.`,
     citizenAccused: (n) => `시민 ${n.accused}님이 지목되어 라이어가 승리했습니다.`,
     allAbstain: () => '모두 기권해 라이어가 승리했습니다.',
     revoteTie: () => '재투표도 동률이라 라이어가 승리했습니다.',
@@ -462,6 +477,7 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
         chat.push(m.msg);
         if (chat.length > 300) chat.shift();
         appendChat(m.msg);
+        if (m.msg.defense && state && ['defense', 'confirm'].includes(state.phase)) renderStage();
         break;
       case 'state':
         state = m;
@@ -577,12 +593,14 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
 
   function renderPlayers() {
     const r = state.round;
-    const voting = state.phase === 'vote' || state.phase === 'revote';
+    const voting = ['vote', 'revote', 'confirm'].includes(state.phase);
     const turnId = state.phase === 'hint' && r ? r.order[r.turn] : null;
+    const accused = ['defense', 'confirm'].includes(state.phase) ? r.accusedId : null;
     $('pcount').textContent = `${state.players.length}/${state.maxPlayers}`;
     $('plist').replaceChildren(...state.players.map((p) => {
       let st = null;
       if (!p.connected) st = h('div', { class: 'state away' }, '연결 끊김 · 재접속 대기');
+      else if (accused === p.id) st = h('div', { class: 'state away' }, state.phase === 'defense' ? '최후의 변론 중' : '지목 찬반 투표 대상');
       else if (voting && p.inRound) st = r.voted.includes(p.id) ? h('div', { class: 'state on' }, '투표 완료') : h('div', { class: 'state' }, '투표 중…');
       else if (turnId === p.id) st = h('div', { class: 'state on' }, '힌트 작성 중');
       else if (r && !p.inRound && state.phase !== 'lobby') st = h('div', { class: 'state' }, '다음 라운드부터 참여');
@@ -608,6 +626,14 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
     let open = CHAT_PHASES.includes(state.phase);
     let why = `${PHASE_LABEL[state.phase]} 중에는 채팅이 잠겨요`;
     if (open && state.meSpectator && state.phase === 'discussion') { open = false; why = '토론은 참가자끼리만 — 결과 화면에서 채팅할 수 있어요'; }
+    const isAccused = state.round && state.round.accusedId === state.me;
+    if (state.phase === 'defense' && !isAccused) { open = false; why = '최후의 변론 중 — 지목된 사람만 말할 수 있어요'; }
+    if (state.phase === 'defense' && isAccused) {
+      $('chatInput').disabled = false; $('chatSend').disabled = false;
+      $('chatInput').placeholder = '최후의 변론을 입력하세요 (말로 해도 돼요)';
+      $('chatLockLabel').textContent = '변론 중';
+      return;
+    }
     $('chatInput').disabled = !open;
     $('chatSend').disabled = !open;
     $('chatInput').placeholder = open ? '메시지 입력 (최대 200자)' : why;
@@ -617,8 +643,11 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
   function msgEl(m) {
     if (m.kind === 'system') return h('div', { class: 'msg system' }, `${m.text} · ${fmtTime(m.ts)}`);
     const mine = state && m.playerId === state.me;
-    return h('div', { class: 'msg' + (mine ? ' mine' : '') },
-      h('div', { class: 'meta' }, h('b', null, m.nickname), m.spectator ? h('span', { class: 'tag spec', style: 'margin:0 6px 0 0' }, '관전') : null, fmtTime(m.ts)),
+    return h('div', { class: 'msg' + (mine ? ' mine' : '') + (m.defense ? ' defense' : '') },
+      h('div', { class: 'meta' }, h('b', null, m.nickname),
+        m.spectator ? h('span', { class: 'tag spec', style: 'margin:0 6px 0 0' }, '관전') : null,
+        m.defense ? h('span', { class: 'tag host', style: 'margin:0 6px 0 0' }, '최후의 변론') : null,
+        fmtTime(m.ts)),
       h('div', { class: 'body' }, m.text));
   }
   function renderChat() {
@@ -730,7 +759,7 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
       if (el) keep[id] = { value: el.value, focus: document.activeElement === el };
     }
     const stage = $('stage');
-    const views = { lobby: lobbyView, role: roleView, hint: hintView, discussion: discussionView, vote: voteView, revote: voteView, guess: guessView, result: resultView };
+    const views = { lobby: lobbyView, role: roleView, hint: hintView, discussion: discussionView, vote: voteView, revote: voteView, defense: defenseView, confirm: confirmView, guess: guessView, result: resultView };
     stage.replaceChildren(...[].concat(views[state.phase]()).filter(Boolean));
     for (const [id, k] of Object.entries(keep)) {
       const el = $(id);
@@ -884,6 +913,58 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
     return parts;
   }
 
+  // 최다 득표자의 최후의 변론: 지목된 사람만 채팅, 무대에 크게 표시
+  function defenseBox(title) {
+    const r = state.round;
+    const lines = chat.filter((m) => m.defense && m.round === r.no && m.playerId === r.accusedId);
+    return h('div', { class: 'defense-box' },
+      h('div', { class: 'muted small' }, title),
+      h('div', { class: 'who' }, nameOf(r.accusedId), r.accusedId === state.me ? h('small', null, '(나)') : null),
+      lines.length
+        ? h('ul', { class: 'defense-lines' }, lines.map((m) => h('li', null, m.text)))
+        : h('div', { class: 'muted small', style: 'margin-top:8px' }, state.phase === 'defense' ? '변론을 기다리는 중… (말로 해도 돼요)' : '채팅으로 남긴 변론은 없어요.'));
+  }
+
+  function defenseView() {
+    const r = state.round;
+    const me = r.accusedId === state.me;
+    return [
+      myCard(),
+      timerEl(me ? '최후의 변론 — 지금 말하세요' : '최후의 변론'),
+      defenseBox('최다 득표 · 최후의 변론'),
+      h('p', { class: 'stage-sub', style: 'text-align:center' }, me
+        ? '오른쪽 채팅창에 변론을 남기거나 직접 말하세요. 끝나면 나머지 사람들이 지목에 찬성할지 반대할지 정합니다.'
+        : '지목된 사람의 이야기를 들어 보세요. 곧 지목에 찬성/반대 투표를 합니다.'),
+      ...hintBoard(),
+    ];
+  }
+
+  function confirmView() {
+    const r = state.round;
+    const eligible = r.role !== 'spectator' && r.accusedId !== state.me;
+    const done = r.myVote != null;
+    const voters = state.players.filter((p) => p.inRound).length - 1;
+    const parts = [
+      myCard(),
+      timerEl(`${nameOf(r.accusedId)}님을 라이어로 지목할까요?`),
+      defenseBox('최후의 변론'),
+    ];
+    if (eligible) {
+      const btn = (agree, label, cls) => h('button', {
+        class: cls + (done && r.myVote === agree ? ' chosen' : ''),
+        disabled: done,
+        onclick: () => sendMsg({ t: 'confirm', agree }),
+      }, label);
+      parts.push(h('div', { class: 'confirm-row' }, btn(true, '찬성 — 지목', 'yes'), btn(false, '반대 — 살려 주기', 'no')));
+    } else if (r.accusedId === state.me) {
+      parts.push(h('div', { class: 'notice' }, '다른 사람들이 지목 여부를 투표하고 있어요.'));
+    }
+    parts.push(h('div', { class: 'progress-line' },
+      done ? `${r.myVote ? '찬성' : '반대'}에 투표했어요. ` : '',
+      `${r.voted.length}/${voters}명 투표 완료 — 찬성이 반대보다 많으면 지목이 확정되고, 아니면 라이어가 승리해요.`));
+    return parts;
+  }
+
   function guessView() {
     const r = state.round;
     const parts = [myCard(), timerEl('라이어의 추측')];
@@ -914,7 +995,13 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
     const liarWin = res.winner === 'liar';
     const iWon = res.winners.includes(state.me);
     const why = REASON[res.reason]({ accused: r.accusedId ? nameOf(r.accusedId) : '', guess: res.guess || '' });
-    const cols = res.candidates ? ['1차 득표', '재투표'] : ['득표'];
+    const cols = (res.candidates ? ['1차 득표', '재투표'] : ['득표']).concat(res.confirmTally ? ['찬반'] : []);
+    const confirmCell = (id) => {
+      if (!res.confirmTally) return null;
+      if (id === r.accusedId) return h('td', { class: 'muted' }, '—');
+      const v = res.confirms[id];
+      return h('td', null, v === true ? '찬성' : v === false ? '반대' : '기권');
+    };
     const rows = r.order.slice().sort((a, b) => (res.firstTally[b] || 0) - (res.firstTally[a] || 0)).map((id) => {
       const votedFor = res.votes[id];
       return h('tr', null,
@@ -923,6 +1010,7 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
           res.winners.includes(id) ? h('span', { class: 'tag win' }, '+1') : null),
         h('td', { class: 'num' }, res.firstTally[id] || 0),
         res.candidates ? h('td', { class: 'num' }, res.candidates.includes(id) ? (res.revoteTally && res.revoteTally[id]) || 0 : '—') : null,
+        confirmCell(id),
         h('td', { class: 'muted' }, votedFor ? `→ ${nameOf(votedFor)}` : '기권',
           res.revotes ? (res.revotes[id] ? ` / 재투표 → ${nameOf(res.revotes[id])}` : ' / 재투표 기권') : ''));
     });
@@ -935,7 +1023,8 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
         h('div', { class: 'fact' }, h('span', null, '주제'), h('b', null, r.topic)),
         h('div', { class: 'fact' }, h('span', null, '제시어'), h('b', null, r.word)),
         h('div', { class: 'fact' }, h('span', null, '라이어'), h('b', null, nameOf(r.liarId))),
-        h('div', { class: 'fact' }, h('span', null, '지목된 사람'), h('b', null, r.accusedId ? nameOf(r.accusedId) : '없음')),
+        h('div', { class: 'fact' }, h('span', null, res.reason === 'acquitted' ? '최다 득표 (부결)' : '지목된 사람'), h('b', null, r.accusedId ? nameOf(r.accusedId) : '없음')),
+        res.confirmTally ? h('div', { class: 'fact' }, h('span', null, '찬반 투표'), h('b', null, `찬성 ${res.confirmTally.yes} · 반대 ${res.confirmTally.no}`)) : null,
         res.guess != null || res.reason === 'guessTimeout' ? h('div', { class: 'fact' }, h('span', null, '라이어의 추측'), h('b', null, res.guess || '(시간 초과)')) : null),
       h('div', { class: 'section-label' }, '투표 결과'),
       h('table', { class: 'tally' },

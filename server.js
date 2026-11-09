@@ -22,6 +22,8 @@ const TIMES = {
   discussion: sec(60),
   vote: sec(20),
   revote: sec(15),
+  defense: sec(10), // 최다 득표자의 최후의 변론
+  confirm: sec(5),  // 지목 확정 찬반 투표
   guess: sec(20),
   grace: sec(60),
 };
@@ -33,11 +35,12 @@ const HINT_MAX = 100;
 const NICK_MAX = 12;
 const GUESS_MAX = 30;
 const CHAT_HISTORY = 200;
-const CHAT_PHASES = new Set(['lobby', 'discussion', 'result']);
-const ROUND_PHASES = new Set(['role', 'hint', 'discussion', 'vote', 'revote', 'guess']);
+const CHAT_PHASES = new Set(['lobby', 'discussion', 'defense', 'result']); // defense는 지목된 사람만
+const ROUND_PHASES = new Set(['role', 'hint', 'discussion', 'vote', 'revote', 'defense', 'confirm', 'guess']);
 const PHASE_LABEL = {
   lobby: '대기실', role: '역할 확인', hint: '힌트 발표', discussion: '토론',
-  vote: '투표', revote: '재투표', guess: '라이어의 추측', result: '결과',
+  vote: '투표', revote: '재투표', defense: '최후의 변론', confirm: '찬반 투표',
+  guess: '라이어의 추측', result: '결과',
 };
 
 const rooms = new Map();
@@ -113,7 +116,8 @@ function viewFor(room, me) {
     const inRound = r.participants.includes(me.id);
     const reveal = phase === 'result';
     const isLiar = me.id === r.liarId;
-    const voteMap = phase === 'revote' ? r.revotes : r.votes;
+    const voteMap = phase === 'revote' ? r.revotes : phase === 'confirm' ? r.confirms : r.votes;
+    const voting = phase === 'vote' || phase === 'revote' || phase === 'confirm';
     round = {
       no: r.no,
       topic: r.topic,
@@ -124,10 +128,11 @@ function viewFor(room, me) {
       order: r.order,
       turn: r.turn,
       hints: r.hints,
-      voted: phase === 'vote' || phase === 'revote' ? [...voteMap.keys()] : [],
-      myVote: phase === 'vote' || phase === 'revote' ? voteMap.get(me.id) ?? null : null,
+      voted: voting ? [...voteMap.keys()] : [],
+      // confirm 단계에서는 true(찬성)/false(반대)
+      myVote: voting ? voteMap.get(me.id) ?? null : null,
       candidates: phase === 'revote' ? r.candidates : null,
-      accusedId: phase === 'guess' || reveal ? r.accusedId : null,
+      accusedId: ['defense', 'confirm', 'guess', 'result'].includes(phase) ? r.accusedId : null,
       result: reveal ? r.result : null,
     };
     if (reveal) {
@@ -209,6 +214,8 @@ function startRound(room, p, ws) {
     hints: [],
     votes: new Map(),
     revotes: new Map(),
+    confirms: new Map(),
+    confirmTally: null,
     candidates: null,
     firstTally: null,
     revoteTally: null,
@@ -310,9 +317,45 @@ function tallyRevote(room) {
   accuse(room, tops[0]);
 }
 
+// 최다 득표자 → 최후의 변론(지목된 사람만 채팅) → 찬반 투표
 function accuse(room, id) {
   const r = room.round;
   r.accusedId = id;
+  system(room, `${r.names[id]}님이 최다 득표했습니다. ${Math.round(TIMES.defense / 1000 / SCALE)}초 동안 최후의 변론을 들어 보세요.`);
+  setPhase(room, 'defense', TIMES.defense, () => startConfirm(room));
+}
+
+function startConfirm(room) {
+  room.round.confirms = new Map();
+  setPhase(room, 'confirm', TIMES.confirm, () => tallyConfirm(room));
+}
+
+function castConfirm(room, p, ws, agree) {
+  const r = room.round;
+  if (room.phase !== 'confirm') return err(ws, '지금은 찬반 투표 시간이 아니에요.');
+  if (!r.participants.includes(p.id)) return err(ws, '이번 라운드 참가자만 투표할 수 있어요.');
+  if (p.id === r.accusedId) return err(ws, '지목된 사람은 찬반 투표에 참여할 수 없어요.');
+  if (r.confirms.has(p.id)) return err(ws, '이미 투표했어요. 투표는 바꿀 수 없어요.');
+  r.confirms.set(p.id, !!agree);
+  if (r.confirms.size >= r.participants.length - 1) tallyConfirm(room);
+  else broadcastState(room);
+}
+
+function tallyConfirm(room) {
+  clearPhaseTimer(room);
+  const r = room.round;
+  let yes = 0, no = 0;
+  for (const v of r.confirms.values()) v ? yes++ : no++;
+  r.confirmTally = { yes, no };
+  // 찬성이 반대보다 많아야 지목 확정. 동수·반대 우세·전원 기권이면 부결 → 라이어 승리
+  if (yes > no) return resolveAccused(room);
+  system(room, `찬반 투표 부결 (찬성 ${yes} · 반대 ${no}). ${r.names[r.accusedId]}님은 지목되지 않았습니다.`);
+  finish(room, 'liar', 'acquitted');
+}
+
+function resolveAccused(room) {
+  const r = room.round;
+  const id = r.accusedId;
   if (id !== r.liarId) return finish(room, 'liar', 'citizenAccused');
   system(room, `${r.names[id]}님이 지목되었고, 라이어였습니다! 라이어가 제시어를 추측합니다.`);
   setPhase(room, 'guess', TIMES.guess, () => finish(room, 'citizen', 'guessTimeout'));
@@ -349,6 +392,8 @@ function finish(room, winner, reason) {
     candidates: r.candidates,
     votes: Object.fromEntries(r.votes),
     revotes: r.candidates ? Object.fromEntries(r.revotes) : null,
+    confirmTally: r.confirmTally,
+    confirms: r.confirmTally ? Object.fromEntries(r.confirms) : null,
     guess: r.guess,
   };
   setPhase(room, 'result', null, null);
@@ -520,6 +565,8 @@ function onChat(room, p, ws, raw) {
   if (!CHAT_PHASES.has(room.phase)) return err(ws, '지금 단계에서는 채팅할 수 없어요.');
   // 토론은 라운드 참가자끼리만. 관전자는 대기실·결과 화면에서 채팅합니다.
   if (p.spectator && room.phase === 'discussion') return err(ws, '토론 중에는 참가자만 채팅할 수 있어요. 관전자는 결과 화면에서 채팅할 수 있어요.');
+  const defense = room.phase === 'defense';
+  if (defense && p.id !== room.round.accusedId) return err(ws, '최후의 변론 중에는 지목된 사람만 말할 수 있어요.');
   const text = String(raw ?? '').replace(/[\r\n]+/g, ' ').trim();
   if (!text) return;
   if ([...text].length > CHAT_MAX) return err(ws, `메시지는 최대 ${CHAT_MAX}자까지 보낼 수 있어요.`);
@@ -527,7 +574,10 @@ function onChat(room, p, ws, raw) {
   p.chatTimes = p.chatTimes.filter((t) => now - t < 5000);
   if (p.chatTimes.length >= 6) return err(ws, '메시지를 너무 빨리 보내고 있어요. 잠시 후 다시 시도해 주세요.');
   p.chatTimes.push(now);
-  addChat(room, { kind: 'user', playerId: p.id, nickname: p.nickname, spectator: !!p.spectator, text });
+  addChat(room, {
+    kind: 'user', playerId: p.id, nickname: p.nickname, spectator: !!p.spectator, text,
+    ...(defense ? { defense: true, round: room.round.no } : {}),
+  });
 }
 
 // ---------- 메시지 라우팅 ----------
@@ -550,6 +600,7 @@ function onMessage(ws, data) {
     case 'hint': return submitHint(room, p, ws, msg.text);
     case 'vote': return castVote(room, p, ws, String(msg.targetId));
     case 'guess': return submitGuess(room, p, ws, msg.text);
+    case 'confirm': return castConfirm(room, p, ws, msg.agree === true);
     case 'spectate': return setSpectator(room, p, ws, msg.value);
     case 'leave':
       send(ws, { t: 'left' });

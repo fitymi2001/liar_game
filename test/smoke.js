@@ -74,6 +74,13 @@ async function playHints(cs, makeText) {
   }
 }
 
+// 최후의 변론이 끝나고 찬반 투표가 열리면 지목된 사람을 뺀 참가자 전원이 투표
+async function confirmAll(cs, agree, observer = cs[0]) {
+  await observer.phase('confirm', 5000);
+  const acc = observer.state.round.accusedId;
+  for (const c of cs) if (c.id !== acc) c.send({ t: 'confirm', agree });
+}
+
 async function main() {
   const server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
     env: { ...process.env, PORT: String(PORT), LIAR_TIME_SCALE: '0.1' },
@@ -136,7 +143,15 @@ async function main() {
     liar.send({ t: 'vote', targetId: others[0].id });
     await others[0].expectError(() => others[0].send({ t: 'vote', targetId: liarId }), /(이미 투표|투표 시간)/);
     check('투표 변경 불가');
-    await A.phase('guess', 3000); check('전원 투표 시 즉시 집계 → 라이어 추측');
+    await A.phase('defense', 3000);
+    assert.equal(A.state.round.accusedId, liarId); check('전원 투표 시 즉시 집계 → 최다 득표자 최후의 변론');
+    await others[0].expectError(() => others[0].send({ t: 'chat', text: '아니야' }), /지목된 사람만/); check('변론 중 다른 사람 채팅 차단');
+    liar.send({ t: 'chat', text: '저 진짜 시민이에요' });
+    await A.until((c) => c.chat.some((m) => m.defense && m.text === '저 진짜 시민이에요')); check('지목된 사람의 변론 메시지 (변론 표시)');
+    await A.phase('confirm', 3000);
+    await liar.expectError(() => liar.send({ t: 'confirm', agree: false }), /지목된 사람은/); check('지목된 사람은 찬반 투표 불가');
+    for (const c of others) c.send({ t: 'confirm', agree: true });
+    await A.phase('guess', 3000); check('찬성 과반 → 지목 확정 → 라이어 추측');
     await others[0].expectError(() => others[0].send({ t: 'guess', text: word }), /라이어만/); check('라이어만 추측 가능');
     liar.send({ t: 'guess', text: '절대아닌단어' });
     await A.phase('result');
@@ -172,8 +187,10 @@ async function main() {
     const l4 = A.state.round.order.find((id) => byId(cs, id).state.round.role === 'liar');
     const victim = cs.find((c) => c.id !== l4);
     for (const c of cs) c.send({ t: 'vote', targetId: c === victim ? cs.find((x) => x !== victim).id : victim.id });
+    await confirmAll(cs, true);
     await A.phase('result', 3000);
-    assert.equal(A.state.round.result.reason, 'citizenAccused'); check('시민 지목 → 라이어 승리');
+    assert.equal(A.state.round.result.reason, 'citizenAccused'); check('시민 지목 확정 → 라이어 승리');
+    assert.deepEqual(A.state.round.result.confirmTally, { yes: 2, no: 0 }); check('결과에 찬반 집계 공개');
 
     console.log('라운드 5: 라이어 지목 → 정답 추측 → 라이어 승리');
     A.send({ t: 'start' });
@@ -181,6 +198,7 @@ async function main() {
     const l5 = byId(cs, A.state.round.order.find((id) => byId(cs, id).state.round.role === 'liar'));
     const w5 = cs.find((c) => c !== l5).state.round.word;
     for (const c of cs) c.send({ t: 'vote', targetId: c === l5 ? cs.find((x) => x !== l5).id : l5.id });
+    await confirmAll(cs, true);
     await l5.phase('guess', 3000);
     const before = A.state.players.find((p) => p.id === l5.id).score;
     l5.send({ t: 'guess', text: ` ${[...w5].join(' ')}! ` });
@@ -188,6 +206,26 @@ async function main() {
     assert.equal(A.state.round.result.reason, 'guessCorrect');
     assert.equal(A.state.players.find((p) => p.id === l5.id).score, before + 1);
     check('공백·문장부호를 무시하고 정답 판정 → 라이어 승리 +1');
+
+    console.log('라운드 6: 최후의 변론 후 찬반 부결 → 라이어 승리');
+    A.send({ t: 'start' });
+    await A.phase('vote', 20000);
+    const l6 = byId(cs, A.state.round.order.find((id) => byId(cs, id).state.round.role === 'liar'));
+    const s6 = A.state.players.find((p) => p.id === l6.id).score;
+    for (const c of cs) c.send({ t: 'vote', targetId: c === l6 ? cs.find((x) => x !== l6).id : l6.id });
+    await confirmAll(cs, false); // 라이어를 지목해 놓고도 부결
+    await A.phase('result', 3000);
+    assert.equal(A.state.round.result.reason, 'acquitted');
+    assert.equal(A.state.round.result.winner, 'liar');
+    assert.equal(A.state.players.find((p) => p.id === l6.id).score, s6 + 1);
+    check('찬반 부결 → 라이어 승리 +1');
+    A.send({ t: 'start' });
+    await A.phase('vote', 20000);
+    const t7 = cs[1];
+    for (const c of cs) c.send({ t: 'vote', targetId: c === t7 ? cs[0].id : t7.id });
+    await A.phase('confirm', 5000);
+    await A.phase('result', 3000); // 아무도 찬반 투표 안 함
+    assert.equal(A.state.round.result.reason, 'acquitted'); check('찬반 전원 기권 → 부결');
 
     console.log('재접속');
     A.send({ t: 'start' });
@@ -258,7 +296,17 @@ async function main() {
     await S.expectError(() => S.send({ t: 'vote', targetId: P1.id }), /참가자만/); check('관전자 투표 불가');
     L.close(); // 관전자의 연결 끊김은 라운드에 영향 없음
     for (const c of ps) c.send({ t: 'vote', targetId: ps.find((x) => x !== c).id });
-    await S.until((c) => c.state.phase === 'result' || c.state.phase === 'guess', 3000, 'after vote');
+    await S.until((c) => ['defense', 'revote'].includes(c.state.phase), 3000, 'after vote');
+    if (S.state.phase === 'revote') {
+      for (const c of ps) c.send({ t: 'vote', targetId: S.state.round.candidates.find((id) => id !== c.id) });
+      await S.until((c) => ['defense', 'result'].includes(c.state.phase), 3000, 'after revote');
+    }
+    if (S.state.phase === 'defense') {
+      await S.phase('confirm', 3000);
+      await S.expectError(() => S.send({ t: 'confirm', agree: true }), /참가자만/); check('관전자 찬반 투표 불가');
+      await confirmAll(ps, true, S);
+    }
+    await S.until((c) => c.state.phase === 'result' || c.state.phase === 'guess', 3000, 'after confirm');
     if (S.state.phase === 'guess') {
       const lp = ps.find((c) => c.state.round.role === 'liar');
       lp.send({ t: 'guess', text: '모름' });
