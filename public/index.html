@@ -241,7 +241,15 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
 .plist .state.away { color: var(--warn); font-weight: 700; }
 
 .spec-wrap { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); }
-.spec-label { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
+.spec-toggle {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; margin-left: -8px;
+  font-size: 13px; font-weight: 600; color: var(--muted); border-color: transparent;
+}
+.spec-toggle:hover:not(:disabled) { border-color: var(--line); }
+.spec-toggle b { color: var(--text); }
+.spec-toggle .chev { display: inline-block; transition: transform .15s; font-size: 11px; }
+.spec-toggle[aria-expanded="true"] .chev { transform: rotate(90deg); }
+#specBody { margin-top: 8px; }
 .slist { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .slist li { font-size: 13px; background: var(--surface-2); border-radius: 99px; padding: 3px 10px; }
 .slist li.off { opacity: .5; }
@@ -253,6 +261,22 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
 .role-card.spectator { background: var(--surface-2); border-style: dashed; }
 .role-card.spectator .role { color: var(--muted); }
 .switch-line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; margin-top: 10px; }
+.plist li { flex-wrap: wrap; }
+.hmenu-btn { padding: 2px 8px; font-size: 16px; line-height: 1; border-color: transparent; }
+.hmenu {
+  flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; margin-top: 2px;
+  background: var(--surface-2); border-radius: 10px;
+}
+.hmenu button { padding: 6px 10px; font-size: 13px; }
+.hmenu button.danger { color: var(--liar); }
+.hmenu button.danger.armed { background: var(--liar); color: #fff; border-color: var(--liar); }
+.slist li.manageable { cursor: pointer; }
+#specMenu .hmenu { margin-top: 8px; }
+.points-card { background: var(--surface-2); border-radius: 12px; padding: 12px 14px; margin: 14px 0; }
+.pt-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 4px 0; }
+.stepper { display: inline-flex; align-items: center; gap: 8px; }
+.stepper button { padding: 2px 12px; font-size: 18px; line-height: 1.2; }
+.stepper b { min-width: 3em; text-align: center; font-variant-numeric: tabular-nums; }
 
 /* 채팅 */
 .chat { padding: 14px; display: flex; flex-direction: column; height: 460px; }
@@ -288,11 +312,72 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
 }
 #toast.show { opacity: 1; }
 
+/* ---------- 이모지 반응 ---------- */
+.react-panel { padding: 12px 14px; }
+.react-panel h3 { margin: 0 0 8px; font-size: 14px; display: flex; justify-content: space-between; }
+.emoji-bar { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 4px; }
+.emoji-bar button {
+  padding: 4px 0; font-size: 22px; line-height: 1.3; font-weight: 400; border-radius: 10px;
+  background: var(--surface-2); border-color: transparent;
+  touch-action: manipulation; -webkit-user-select: none; user-select: none; transition: transform .08s;
+}
+.emoji-bar button:hover { transform: scale(1.18); border-color: transparent; }
+.emoji-bar button:active { transform: scale(.88); }
+.fx-layer { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 20; }
+.fx {
+  position: absolute; bottom: -70px; display: grid; justify-items: center;
+  animation: fx-rise var(--dur) cubic-bezier(.2, .7, .3, 1) forwards; will-change: transform, opacity;
+}
+.fx .e { font-size: calc(34px * var(--s)); line-height: 1; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .25)); }
+.fx .n {
+  font-size: 11px; font-weight: 700; background: var(--surface); color: var(--text);
+  border-radius: 99px; padding: 0 6px; margin-top: 2px; opacity: .9; white-space: nowrap;
+}
+@keyframes fx-rise {
+  0% { transform: translate(0, 0) rotate(0) scale(.4); opacity: 0; }
+  10% { transform: translate(calc(var(--dx) * .1), -8vh) rotate(calc(var(--rot) * .2)) scale(1.12); opacity: 1; }
+  100% { transform: translate(var(--dx), var(--rise)) rotate(var(--rot)) scale(1); opacity: 0; }
+}
+.fx.mega { left: 50%; top: 45%; bottom: auto; animation: fx-mega 1.2s cubic-bezier(.2, 1.4, .4, 1) forwards; }
+.fx.mega .e { font-size: min(160px, 40vw); }
+.fx.mega .n { font-size: 16px; padding: 2px 10px; }
+@keyframes fx-mega {
+  0% { transform: translate(-50%, -50%) scale(.2) rotate(-20deg); opacity: 0; }
+  25% { transform: translate(-50%, -50%) scale(1.15) rotate(8deg); opacity: 1; }
+  45% { transform: translate(-50%, -50%) scale(.95) rotate(-4deg); }
+  75% { opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(1.3); opacity: 0; }
+}
+.react-badge {
+  position: absolute; top: -8px; left: 20px; z-index: 2; white-space: nowrap;
+  background: var(--text); color: var(--bg); font-size: 10px; font-weight: 800; line-height: 1.5;
+  border-radius: 99px; padding: 0 5px; box-shadow: var(--shadow); opacity: .92;
+}
+.react-badge.bump { animation: badge-pop .25s ease-out; }
+@keyframes badge-pop { 0% { transform: scale(1.7); } 100% { transform: scale(1); } }
+.slist li { position: relative; }
+.slist .react-badge { left: auto; right: -8px; top: -12px; }
+@media (prefers-reduced-motion: reduce) {
+  .fx, .fx.mega { animation: fx-fade 1.2s ease-out forwards; }
+  .fx { bottom: 20%; }
+  @keyframes fx-fade { 0% { opacity: 0; } 20% { opacity: 1; } 100% { opacity: 0; } }
+}
+
 @media (max-width: 860px) {
   .layout { grid-template-columns: minmax(0, 1fr); }
   .chat { height: 380px; }
   .stage { padding: 16px; min-height: 0; }
   .lobby-code .big { font-size: 34px; }
+  /* 휴대폰: 반응 버튼은 화면 아래에 고정된 가로 스크롤 줄 */
+  .react-panel {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 15;
+    border-radius: 14px 14px 0 0; padding: 8px 10px;
+  }
+  .react-panel h3 { display: none; }
+  .emoji-bar { display: flex; overflow-x: auto; scrollbar-width: none; }
+  .emoji-bar button { flex: none; width: 42px; }
+  #room { padding-bottom: 80px; }
+  #toast { bottom: 84px; }
 }
 </style>
 </head>
@@ -302,7 +387,7 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
 <section id="home" class="hidden">
   <div class="home-card">
     <div class="brand"><h1>라이어 게임</h1><span class="ver">v0.1</span></div>
-    <p class="lead">3~6명이 방 코드로 모여 라이어를 찾아내는 실시간 게임</p>
+    <p class="lead">3~10명이 방 코드로 모여 라이어를 찾아내는 실시간 게임</p>
     <div class="field">
       <label for="nickInput">닉네임</label>
       <input id="nickInput" type="text" maxlength="12" placeholder="최대 12자" autocomplete="off">
@@ -322,7 +407,7 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
         <li>시민이 지목되면 라이어 승리. 라이어가 지목되면 20초 안에 제시어를 맞혀야 이깁니다.</li>
         <li>최다 득표 동률이면 후보끼리 15초 재투표, 또 동률이면 라이어 승리.</li>
         <li>최다 득표자는 10초 최후의 변론 후 5초 찬반 투표. 찬성이 더 많아야 지목 확정, 아니면 라이어 승리.</li>
-        <li>이긴 사람마다 1점, 같은 방에서 점수가 누적됩니다.</li>
+        <li>시민이 이기면 시민 각자 1점, 라이어가 이기면 라이어 3점(방장이 바꿀 수 있음). 같은 방에서 누적됩니다.</li>
       </ul>
     </details>
   </div>
@@ -345,10 +430,19 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
       <div class="panel players">
         <h3><span>참가자</span><span id="pcount" class="muted"></span></h3>
         <ul id="plist" class="plist"></ul>
-        <div id="specWrap" class="spec-wrap hidden">
-          <div class="spec-label"><span>관전자</span><span id="scount"></span></div>
-          <ul id="slist" class="slist"></ul>
+        <div id="specWrap" class="spec-wrap">
+          <button id="specToggle" class="spec-toggle ghost" type="button" aria-expanded="false" aria-controls="specBody">
+            <span class="chev" aria-hidden="true">▸</span> 관전자 <b id="scount">0명</b>
+          </button>
+          <div id="specBody" class="hidden">
+            <ul id="slist" class="slist"></ul>
+            <div id="specMenu"></div>
+          </div>
         </div>
+      </div>
+      <div class="panel react-panel">
+        <h3><span>반응</span><span class="muted small">연타·꾹 누르기 가능</span></h3>
+        <div id="emojiBar" class="emoji-bar"></div>
       </div>
       <div class="panel chat">
         <h3><span>방 채팅</span><span id="chatLockLabel" class="muted small"></span></h3>
@@ -364,6 +458,7 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
 </section>
 
 <div id="toast" role="status"></div>
+<div id="fxLayer" class="fx-layer" aria-hidden="true"></div>
 
 <script>
 (() => {
@@ -381,7 +476,7 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
     guessWrong: (n) => `라이어가 지목됐고, 추측 “${n.guess}”이(가) 틀려 시민이 승리했습니다.`,
     guessTimeout: () => '라이어가 지목됐고, 시간 안에 답하지 못해 시민이 승리했습니다.',
   };
-  const AV_COLORS = ['#c2410c', '#1d6a5a', '#7c3aed', '#0369a1', '#be185d', '#4d7c0f', '#b45309', '#334155'];
+  const AV_COLORS = ['#c2410c', '#1d6a5a', '#7c3aed', '#0369a1', '#be185d', '#4d7c0f', '#b45309', '#334155', '#0f766e', '#a21caf'];
 
   // DOM 헬퍼: 사용자 입력은 항상 textContent로만 넣습니다.
   function h(tag, attrs, ...kids) {
@@ -464,7 +559,11 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
 
   function onServer(m) {
     switch (m.t) {
+      case 'react':
+        onReact(m);
+        break;
       case 'joined':
+        if (Array.isArray(m.emojis)) renderEmojiBar(m.emojis);
         saveSession({ code: m.code, token: m.token });
         $('connBanner').classList.add('hidden');
         history.replaceState(null, '', `?room=${m.code}`);
@@ -491,6 +590,13 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
           render();
         }
         toast(m.message);
+        break;
+      case 'kicked':
+        saveSession(null);
+        state = null; chat = [];
+        history.replaceState(null, '', location.pathname);
+        render();
+        toast('방장이 당신을 방에서 내보냈어요.');
         break;
       case 'left':
         saveSession(null);
@@ -604,22 +710,174 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
       else if (voting && p.inRound) st = r.voted.includes(p.id) ? h('div', { class: 'state on' }, '투표 완료') : h('div', { class: 'state' }, '투표 중…');
       else if (turnId === p.id) st = h('div', { class: 'state on' }, '힌트 작성 중');
       else if (r && !p.inRound && state.phase !== 'lobby') st = h('div', { class: 'state' }, '다음 라운드부터 참여');
+      const canManage = isHost() && p.id !== state.me;
       return h('li', null,
-        h('div', { class: 'avatar' + (p.connected ? '' : ' off'), style: `background:${colorOf(p.id)}` }, [...p.nickname][0] || '?'),
+        h('div', { class: 'avatar' + (p.connected ? '' : ' off'), style: `background:${colorOf(p.id)}`, 'data-pid': p.id }, [...p.nickname][0] || '?'),
         h('div', { style: 'flex:1;min-width:0' },
           h('div', { class: 'name' }, p.nickname,
             p.id === state.hostId ? h('span', { class: 'tag host' }, '방장') : null,
             p.id === state.me ? h('span', { class: 'tag me' }, '나') : null),
           st),
-        h('div', { class: 'score' }, p.score, h('small', null, '점')));
+        h('div', { class: 'score' }, p.score, h('small', null, '점')),
+        canManage ? h('button', {
+          class: 'hmenu-btn ghost', type: 'button', 'aria-label': `${p.nickname} 관리`,
+          'aria-expanded': hostMenu.pid === p.id ? 'true' : 'false',
+          onclick: () => toggleHostMenu(p.id),
+        }, '⋯') : null,
+        canManage && hostMenu.pid === p.id ? hostMenuEl(p, false) : null);
     }));
+    // 관전자는 접어 두고 인원수만 표시. 토글을 눌러야 목록이 보입니다.
     const specs = state.spectators;
-    $('specWrap').classList.toggle('hidden', specs.length === 0);
-    $('scount').textContent = `${specs.length}/${state.maxSpectators}`;
+    $('scount').textContent = `${specs.length}명`;
+    $('specToggle').disabled = specs.length === 0;
+    const open = specOpen && specs.length > 0;
+    $('specToggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+    $('specToggle').title = specs.length ? (open ? '관전자 목록 접기' : '관전자 목록 펼치기') : '관전자가 없어요';
+    $('specBody').classList.toggle('hidden', !open);
     $('slist').replaceChildren(...specs.map((s) => h('li', {
-      class: (s.connected ? '' : 'off') + (s.id === state.me ? ' me' : ''),
-      title: s.connected ? '' : '연결 끊김',
+      class: (s.connected ? '' : 'off') + (s.id === state.me ? ' me' : '') + (isHost() ? ' manageable hmenu-btn' : ''),
+      title: isHost() ? '눌러서 관리' : (s.connected ? '' : '연결 끊김'),
+      'data-pid': s.id,
+      onclick: isHost() ? () => toggleHostMenu(s.id) : null,
     }, s.nickname, s.id === state.me ? ' (나)' : '')));
+    const sMenuFor = isHost() && specs.find((s) => s.id === hostMenu.pid);
+    $('specMenu').replaceChildren(...(sMenuFor ? [hostMenuEl(sMenuFor, true)] : []));
+    for (const pid of combos.keys()) paintBadge(pid, false); // 다시 그려도 연타 배지 유지
+  }
+
+  // 관전자 목록 펼침 상태 (이 브라우저에만 기억)
+  let specOpen = false;
+  try { specOpen = localStorage.getItem('liar.specOpen') === '1'; } catch {}
+  $('specToggle').addEventListener('click', () => {
+    specOpen = !specOpen;
+    try { localStorage.setItem('liar.specOpen', specOpen ? '1' : '0'); } catch {}
+    if (state) renderPlayers();
+  });
+
+  // ---------- 방장 메뉴 (추방 / 관전으로 보내기 / 방장 넘기기) ----------
+  let hostMenu = { pid: null, confirmKick: false };
+  function toggleHostMenu(pid) {
+    hostMenu = { pid: hostMenu.pid === pid ? null : pid, confirmKick: false };
+    renderPlayers();
+  }
+  function hostMenuEl(p, isSpectator) {
+    const inRound = !['lobby', 'result'].includes(state.phase);
+    const participant = !isSpectator && state.round && state.players.find((x) => x.id === p.id && x.inRound);
+    const act = (msg) => { sendMsg(msg); hostMenu = { pid: null, confirmKick: false }; renderPlayers(); };
+    const kickLabel = hostMenu.confirmKick
+      ? (inRound && participant ? '정말 내보낼까요? 진행 중인 라운드는 무효가 돼요' : '정말 내보낼까요?')
+      : '내보내기';
+    return h('div', { class: 'hmenu', role: 'menu' },
+      isSpectator ? null : h('button', { type: 'button', role: 'menuitem', onclick: () => act({ t: 'transferHost', targetId: p.id }) }, '방장 넘기기'),
+      isSpectator ? null : h('button', {
+        type: 'button', role: 'menuitem', disabled: inRound,
+        title: inRound ? '라운드가 끝난 뒤에 할 수 있어요' : '',
+        onclick: () => act({ t: 'forceSpectate', targetId: p.id }),
+      }, '관전으로 보내기'),
+      h('button', {
+        type: 'button', role: 'menuitem', class: 'danger' + (hostMenu.confirmKick ? ' armed' : ''),
+        onclick: () => {
+          if (!hostMenu.confirmKick) { hostMenu.confirmKick = true; return renderPlayers(); }
+          act({ t: 'kick', targetId: p.id });
+        },
+      }, kickLabel));
+  }
+  // 메뉴 밖을 누르면 닫기
+  document.addEventListener('click', (e) => {
+    if (!hostMenu.pid || !state) return;
+    if (e.target.closest && e.target.closest('.hmenu, .hmenu-btn')) return;
+    hostMenu = { pid: null, confirmKick: false };
+    renderPlayers();
+  });
+
+  // ---------- 점수 규칙 ----------
+  function pointsBlock() {
+    const s = state.settings;
+    const editable = isHost() && !state.meSpectator;
+    const row = (key, label) => {
+      const v = s[key];
+      return h('div', { class: 'pt-row' },
+        h('span', null, label),
+        editable
+          ? h('div', { class: 'stepper' },
+            h('button', { type: 'button', disabled: v <= 0, 'aria-label': `${label} 1점 내리기`, onclick: () => sendMsg({ t: 'points', [key]: v - 1 }) }, '−'),
+            h('b', null, `${v}점`),
+            h('button', { type: 'button', disabled: v >= state.pointsMax, 'aria-label': `${label} 1점 올리기`, onclick: () => sendMsg({ t: 'points', [key]: v + 1 }) }, '+'))
+          : h('b', null, `${v}점`));
+    };
+    return h('div', { class: 'points-card' },
+      h('div', { class: 'section-label', style: 'margin-top:0' }, editable ? '점수 규칙 · 방장이 바꿀 수 있어요' : '점수 규칙'),
+      row('citizenWin', '시민이 이기면 시민 각자'),
+      row('liarWin', '라이어가 이기면 라이어'));
+  }
+
+  // ---------- 이모지 반응 ----------
+  const combos = new Map(); // playerId → { emoji, count, timer }
+  const FX_MAX = 160;       // 화면에 동시에 떠 있는 이모지 상한 (브라우저 보호)
+  function renderEmojiBar(list) {
+    $('emojiBar').replaceChildren(...list.map((e) => {
+      let hold = null, rep = null;
+      const fire = () => sendMsg({ t: 'react', emoji: e });
+      const stop = () => { clearTimeout(hold); clearInterval(rep); hold = rep = null; };
+      return h('button', {
+        type: 'button', 'aria-label': `반응 ${e}`, title: '누르기·연타·꾹 누르기',
+        // 꾹 누르고 있으면 연사
+        onpointerdown: (ev) => {
+          if (ev.button !== 0) return;
+          fire(); stop();
+          hold = setTimeout(() => { rep = setInterval(fire, 110); }, 350);
+        },
+        onpointerup: stop, onpointerleave: stop, onpointercancel: stop,
+        onclick: (ev) => { if (ev.detail === 0) fire(); }, // 키보드 Enter/Space
+        oncontextmenu: (ev) => ev.preventDefault(),
+      }, e);
+    }));
+  }
+  function onReact(m) {
+    if (!state) return;
+    const prev = combos.get(m.playerId);
+    if (prev) clearTimeout(prev.timer);
+    const count = prev && prev.emoji === m.emoji ? prev.count + 1 : 1;
+    combos.set(m.playerId, {
+      emoji: m.emoji, count,
+      timer: setTimeout(() => { combos.delete(m.playerId); paintBadge(m.playerId, false); }, 1600),
+    });
+    paintBadge(m.playerId, true);
+    if (document.hidden) return; // 안 보는 탭에서는 애니메이션을 쌓지 않음
+    spawnFloat(m.emoji, m.playerId, count);
+    if (count % 10 === 0) spawnMega(m.emoji, m.playerId, count);
+  }
+  function paintBadge(pid, bump) {
+    const host = document.querySelector(`[data-pid="${CSS.escape(pid)}"]`);
+    if (!host) return;
+    let b = host.querySelector('.react-badge');
+    const c = combos.get(pid);
+    if (!c) { if (b) b.remove(); return; }
+    if (!b) { b = h('span', { class: 'react-badge' }); host.append(b); }
+    b.textContent = c.count > 1 ? `${c.emoji} x${c.count}` : c.emoji;
+    if (bump) { b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); }
+  }
+  function addFx(el) {
+    const layer = $('fxLayer');
+    while (layer.childElementCount >= FX_MAX) layer.firstElementChild.remove();
+    el.addEventListener('animationend', () => el.remove());
+    layer.append(el);
+  }
+  function spawnFloat(emoji, pid, combo) {
+    // 연타할수록 조금씩 커짐
+    const s = Math.min(1 + combo * 0.05, 2.4) * (0.8 + Math.random() * 0.5);
+    const style = [
+      `left:${(3 + Math.random() * 94).toFixed(1)}%`,
+      `--s:${s.toFixed(2)}`,
+      `--dx:${Math.round(Math.random() * 180 - 90)}px`,
+      `--rot:${Math.round(Math.random() * 70 - 35)}deg`,
+      `--rise:${-Math.round(55 + Math.random() * 40)}vh`,
+      `--dur:${(1.8 + Math.random() * 1.3).toFixed(2)}s`,
+    ].join(';');
+    addFx(h('div', { class: 'fx', style }, h('span', { class: 'e' }, emoji), h('span', { class: 'n' }, nameOf(pid))));
+  }
+  function spawnMega(emoji, pid, combo) {
+    addFx(h('div', { class: 'fx mega' }, h('span', { class: 'e' }, emoji), h('span', { class: 'n' }, `${nameOf(pid)} x${combo}!`)));
   }
 
   function renderChatLock() {
@@ -802,6 +1060,7 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
         h('div', { class: 'muted small' }, '방 코드'),
         h('div', { class: 'big' }, state.code)),
       h('div', { class: 'lobby-actions' }, startBlock()),
+      pointsBlock(),
       h('div', { class: 'notice' }, '라운드마다 라이어 한 명과 발표 순서가 무작위로 정해져요. 시민은 주제와 제시어를, 라이어는 주제만 보게 됩니다.'),
     ];
   }
@@ -1007,7 +1266,7 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
       return h('tr', null,
         h('td', null, nameOf(id),
           id === r.liarId ? h('span', { class: 'tag liar' }, '라이어') : null,
-          res.winners.includes(id) ? h('span', { class: 'tag win' }, '+1') : null),
+          res.winners.includes(id) ? h('span', { class: 'tag win' }, `+${res.points}`) : null),
         h('td', { class: 'num' }, res.firstTally[id] || 0),
         res.candidates ? h('td', { class: 'num' }, res.candidates.includes(id) ? (res.revoteTally && res.revoteTally[id]) || 0 : '—') : null,
         confirmCell(id),
@@ -1018,7 +1277,7 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
       h('div', { class: 'banner ' + res.winner },
         h('div', { class: 'w' }, liarWin ? '라이어 승리' : '시민 승리'),
         h('div', { class: 'why' }, why),
-        r.role !== 'spectator' ? h('div', { class: 'muted small', style: 'margin-top:6px' }, iWon ? '당신의 팀이 이겼어요! +1점' : '아쉽게 졌어요.') : null),
+        r.role !== 'spectator' ? h('div', { class: 'muted small', style: 'margin-top:6px' }, iWon ? `당신의 팀이 이겼어요! +${res.points}점` : '아쉽게 졌어요.') : null),
       h('div', { class: 'facts' },
         h('div', { class: 'fact' }, h('span', null, '주제'), h('b', null, r.topic)),
         h('div', { class: 'fact' }, h('span', null, '제시어'), h('b', null, r.word)),
@@ -1031,6 +1290,7 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
         h('thead', null, h('tr', null, h('th', null, '참가자'), cols.map((c) => h('th', null, c)), h('th', null, '투표한 대상'))),
         h('tbody', null, rows)),
       ...hintBoard(),
+      pointsBlock(),
       h('div', { class: 'result-actions' }, startBlock()),
     ];
   }

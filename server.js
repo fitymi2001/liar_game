@@ -28,13 +28,16 @@ const TIMES = {
   grace: sec(60),
 };
 const MIN_PLAYERS = 3;
-const MAX_PLAYERS = 6;
-const MAX_SPECTATORS = 10;
+const MAX_PLAYERS = 10;
+const MAX_SPECTATORS = 20; // 참가자 10명과 별도
 const CHAT_MAX = 200;
 const HINT_MAX = 100;
 const NICK_MAX = 12;
 const GUESS_MAX = 30;
 const CHAT_HISTORY = 200;
+// 승리 점수 (방장이 대기실·결과 화면에서 0~10점으로 바꿀 수 있음)
+const DEFAULT_POINTS = { citizenWin: 1, liarWin: 3 };
+const POINTS_MAX = 10;
 const CHAT_PHASES = new Set(['lobby', 'discussion', 'defense', 'result']); // defense는 지목된 사람만
 const ROUND_PHASES = new Set(['role', 'hint', 'discussion', 'vote', 'revote', 'defense', 'confirm', 'guess']);
 const PHASE_LABEL = {
@@ -42,6 +45,20 @@ const PHASE_LABEL = {
   vote: '투표', revote: '재투표', defense: '최후의 변론', confirm: '찬반 투표',
   guess: '라이어의 추측', result: '결과',
 };
+
+// 이모지 반응: 이 목록에 있는 것만 중계합니다 (클라이언트도 입장 시 이 목록을 받아 버튼을 그림)
+const EMOJIS = [
+  '😂', '🤣', '😆', '🥳', '🎉', '👏', // 웃음·신남
+  '😮', '😱', '🤯', '😳',             // 놀람·충격
+  '🤔', '🧐', '🤨', '😏', '🕵️', '👀', // 의심·추리
+  '😡', '🤬', '🙄', '😤',             // 화남·답답
+  '😭', '🥲', '🙏', '😇',             // 억울·결백
+  '👍', '👎', '❤️', '🔥', '💯', '💀', '🤡', '🤫', '🫣', '😴',
+];
+const EMOJI_SET = new Set(EMOJIS);
+// 연타는 허용하되 한 사람이 서버·다른 브라우저를 마비시키지 못하게 토큰 버킷으로 제한
+const REACT_BURST = 20;   // 한 번에 몰아칠 수 있는 개수
+const REACT_PER_SEC = 12; // 초당 회복량
 
 const rooms = new Map();
 let joinSeq = 0;
@@ -153,6 +170,8 @@ function viewFor(room, me) {
     minPlayers: MIN_PLAYERS,
     maxPlayers: MAX_PLAYERS,
     maxSpectators: MAX_SPECTATORS,
+    settings: room.settings,
+    pointsMax: POINTS_MAX,
     players,
     spectators,
     round,
@@ -210,6 +229,7 @@ function startRound(room, p, ws) {
     participants,
     order: shuffle(participants),
     names: Object.fromEntries(ps.map((x) => [x.id, x.nickname])),
+    points: { ...room.settings }, // 라운드 시작 시점의 점수 규칙으로 고정
     turn: -1,
     hints: [],
     votes: new Map(),
@@ -379,12 +399,15 @@ function finish(room, winner, reason) {
   clearPhaseTimer(room);
   const r = room.round;
   const winners = winner === 'liar' ? [r.liarId] : r.participants.filter((id) => id !== r.liarId);
+  // 시민 승리면 시민 각자 citizenWin점, 라이어 승리면 라이어 liarWin점. 같은 방에서 누적
+  const points = winner === 'liar' ? r.points.liarWin : r.points.citizenWin;
   for (const id of winners) {
     const p = room.players.get(id);
-    if (p) p.score += 1; // 이긴 사람마다 1점, 같은 방에서 누적
+    if (p) p.score += points;
   }
   r.result = {
     winner,
+    points,
     reason,
     winners,
     firstTally: r.firstTally || {},
@@ -423,7 +446,7 @@ function attach(ws, room, p) {
   ws.player = p;
   p.ws = ws;
   p.connected = true;
-  send(ws, { t: 'joined', code: room.code, token: p.token, playerId: p.id });
+  send(ws, { t: 'joined', code: room.code, token: p.token, playerId: p.id, emojis: EMOJIS });
   send(ws, { t: 'history', msgs: room.chat });
 }
 
@@ -448,10 +471,18 @@ function addPlayer(room, ws, nickname, spectator = false) {
 }
 
 // 대기실·결과 화면에서만 참가자 ↔ 관전자를 바꿀 수 있습니다.
-function setSpectator(room, p, ws, value) {
+function setSpectator(room, p, ws, value, by = null) {
   value = !!value;
   if (ROUND_PHASES.has(room.phase)) return err(ws, '라운드가 끝난 뒤에 바꿀 수 있어요.');
   if (p.spectator === value) return;
+  if (by) {
+    // 방장이 다른 사람을 관전으로 보냄
+    if (spectatorList(room).length >= MAX_SPECTATORS) return err(ws, `관전자 자리가 가득 찼어요. (최대 ${MAX_SPECTATORS}명)`);
+    p.spectator = true;
+    system(room, `방장 ${by.nickname}님이 ${p.nickname}님을 관전으로 보냈습니다.`);
+    ensureHost(room);
+    return broadcastState(room);
+  }
   if (!value && activePlayers(room).length >= MAX_PLAYERS) return err(ws, `참가자 자리가 가득 찼어요. (최대 ${MAX_PLAYERS}명)`);
   if (value && spectatorList(room).length >= MAX_SPECTATORS) return err(ws, `관전자 자리가 가득 찼어요. (최대 ${MAX_SPECTATORS}명)`);
   p.spectator = value;
@@ -477,6 +508,7 @@ function createRoom(ws, msg) {
     chat: [],
     msgSeq: 0,
     usedWords: new Set(),
+    settings: { ...DEFAULT_POINTS },
   };
   rooms.set(room.code, room);
   addPlayer(room, ws, nickname);
@@ -539,6 +571,7 @@ function removePlayer(room, id, why) {
   const who = p.spectator ? `관전자 ${p.nickname}` : p.nickname;
   system(room, why === 'timeout'
     ? `${who}님이 재접속 시간(60초)이 지나 퇴장 처리되었습니다.`
+    : why === 'kick' ? `방장이 ${who}님을 내보냈습니다.`
     : `${who}님이 퇴장했습니다.`);
   // 방장이 나가면 남은 참가자 중 입장이 가장 빠른 사람에게 넘깁니다.
   ensureHost(room);
@@ -580,6 +613,68 @@ function onChat(room, p, ws, raw) {
   });
 }
 
+// ---------- 방장 권한 ----------
+function hostTarget(room, p, ws, targetId) {
+  if (room.hostId !== p.id) { err(ws, '방장만 할 수 있어요.'); return null; }
+  const t = room.players.get(String(targetId));
+  if (!t) { err(ws, '그 사람은 이미 방에 없어요.'); return null; }
+  if (t.id === p.id) { err(ws, '자기 자신에게는 할 수 없어요.'); return null; }
+  return t;
+}
+
+function setPoints(room, p, ws, msg) {
+  if (room.hostId !== p.id) return err(ws, '방장만 점수를 바꿀 수 있어요.');
+  if (ROUND_PHASES.has(room.phase)) return err(ws, '점수는 라운드가 끝난 뒤에 바꿀 수 있어요.');
+  const next = { ...room.settings };
+  for (const k of ['citizenWin', 'liarWin']) {
+    if (msg[k] === undefined) continue;
+    const v = Number(msg[k]);
+    if (!Number.isInteger(v) || v < 0 || v > POINTS_MAX) return err(ws, `점수는 0~${POINTS_MAX} 사이 정수로 정해 주세요.`);
+    next[k] = v;
+  }
+  if (next.citizenWin === room.settings.citizenWin && next.liarWin === room.settings.liarWin) return;
+  room.settings = next;
+  system(room, `점수 규칙 변경: 시민 승리 ${next.citizenWin}점 · 라이어 승리 ${next.liarWin}점`);
+  broadcastState(room);
+}
+
+function kick(room, p, ws, targetId) {
+  const t = hostTarget(room, p, ws, targetId);
+  if (!t) return;
+  send(t.ws, { t: 'kicked' });
+  // 진행 중인 라운드의 참가자라면 나가기와 똑같이 라운드가 무효 처리됩니다.
+  removePlayer(room, t.id, 'kick');
+}
+
+function forceSpectate(room, p, ws, targetId) {
+  const t = hostTarget(room, p, ws, targetId);
+  if (!t) return;
+  if (t.spectator) return err(ws, '이미 관전 중이에요.');
+  setSpectator(room, t, ws, true, p);
+}
+
+function transferHost(room, p, ws, targetId) {
+  const t = hostTarget(room, p, ws, targetId);
+  if (!t) return;
+  if (t.spectator) return err(ws, '관전자에게는 방장을 넘길 수 없어요.');
+  room.hostId = t.id;
+  system(room, `${p.nickname}님이 ${t.nickname}님에게 방장을 넘겼습니다.`);
+  broadcastState(room);
+}
+
+// 어느 단계에서든, 관전자도 보낼 수 있습니다. 기록은 남기지 않고 바로 중계만 합니다.
+function onReact(room, p, emoji) {
+  if (!EMOJI_SET.has(emoji)) return;
+  const now = Date.now();
+  const b = p.reactBucket || (p.reactBucket = { tokens: REACT_BURST, at: now });
+  b.tokens = Math.min(REACT_BURST, b.tokens + ((now - b.at) / 1000) * REACT_PER_SEC);
+  b.at = now;
+  if (b.tokens < 1) return; // 너무 빠른 연타는 조용히 버림
+  b.tokens -= 1;
+  const msg = { t: 'react', emoji, playerId: p.id };
+  for (const q of room.players.values()) sendTo(q, msg);
+}
+
 // ---------- 메시지 라우팅 ----------
 function onMessage(ws, data) {
   let msg;
@@ -601,7 +696,12 @@ function onMessage(ws, data) {
     case 'vote': return castVote(room, p, ws, String(msg.targetId));
     case 'guess': return submitGuess(room, p, ws, msg.text);
     case 'confirm': return castConfirm(room, p, ws, msg.agree === true);
+    case 'react': return onReact(room, p, String(msg.emoji));
     case 'spectate': return setSpectator(room, p, ws, msg.value);
+    case 'points': return setPoints(room, p, ws, msg);
+    case 'kick': return kick(room, p, ws, msg.targetId);
+    case 'forceSpectate': return forceSpectate(room, p, ws, msg.targetId);
+    case 'transferHost': return transferHost(room, p, ws, msg.targetId);
     case 'leave':
       send(ws, { t: 'left' });
       return removePlayer(room, p.id, 'leave');
