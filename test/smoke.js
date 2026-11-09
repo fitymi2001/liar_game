@@ -20,6 +20,7 @@ class Client {
       this.ws.on('message', (d) => {
         const m = JSON.parse(d);
         if (m.t === 'state') this.state = m;
+        if (m.t === 'rooms') this.rooms = m.rooms;
         if (m.t === 'error') this.errors.push(m);
         if (m.t === 'chat') this.chat.push(m.msg);
         if (m.t === 'history') this.chat = m.msgs.slice();
@@ -447,6 +448,43 @@ async function main() {
     }));
     assert.equal(new Set(many.map((c) => c.code)).size, 30); check('방 30개 동시 생성 — 코드 중복 없음');
     for (const c of [...ra, ...rb, ...many]) c.close();
+
+    console.log('로비 · 방 이름');
+    await sleep(400); // 앞에서 닫은 방들이 정리될 시간
+    const L1 = new Client('로비'); await L1.open();
+    L1.send({ t: 'lobby' });
+    await L1.until((c) => Array.isArray(c.rooms), 3000, 'room list');
+    const baseCount = L1.rooms.length;
+    check('로비 접속 시 열린 방 목록 수신');
+    const N1 = new Client('작명'); await N1.open();
+    await N1.expectError(() => N1.send({ t: 'create', nickname: '작명', roomName: '가'.repeat(21) }), /20자/); check('21자 방 이름 거부');
+    N1.send({ t: 'create', nickname: '작명', roomName: '  금요일 라이어  ' });
+    await N1.until((c) => c.state, 3000, 'named room');
+    assert.equal(N1.state.roomName, '금요일 라이어'); check('방 이름 지정');
+    const N2 = new Client('무명'); await N2.open();
+    N2.send({ t: 'create', nickname: '무명' });
+    await N2.until((c) => c.state, 3000, 'fish room');
+    assert.ok(N2.state.roomName && N2.state.roomName !== '금요일 라이어');
+    check(`방 이름 비우면 물고기 이름 자동 배정 (${N2.state.roomName})`);
+    await L1.until((c) => c.rooms.length === baseCount + 2 && c.rooms.some((r) => r.name === '금요일 라이어'), 3000, 'list update');
+    const listed = L1.rooms.find((r) => r.code === N1.code);
+    assert.equal(listed.players, 1); assert.equal(listed.maxPlayers, 10); assert.equal(listed.inProgress, false);
+    check('새 방이 로비 목록에 실시간 추가 (이름·인원·상태)');
+    const N3 = new Client('합류'); await N3.open();
+    N3.send({ t: 'join', code: N1.code, nickname: '합류' });
+    await L1.until((c) => (c.rooms.find((r) => r.code === N1.code) || {}).players === 2, 3000, 'count update');
+    check('참가자 수 변화가 로비 목록에 반영');
+    N2.send({ t: 'leave' });
+    await L1.until((c) => !c.rooms.some((r) => r.code === N2.code), 3000, 'room removed');
+    check('모두 나간 방은 목록에서 사라짐');
+    // 방에 들어간 연결은 더는 로비 목록을 받지 않음
+    L1.send({ t: 'join', code: N1.code, nickname: '로비' });
+    await L1.until((c) => c.state, 3000, 'lobby watcher joins');
+    L1.rooms = 'stop';
+    N3.send({ t: 'leave' });
+    await sleep(500);
+    assert.equal(L1.rooms, 'stop'); check('방에 들어가면 로비 목록 전송 중단');
+    for (const c of [L1, N1, N3]) c.close();
     console.log(`\n모두 통과: ${ok}개 검사`);
   } finally {
     server.kill();

@@ -60,8 +60,70 @@ const EMOJI_SET = new Set(EMOJIS);
 const REACT_BURST = 20;   // 한 번에 몰아칠 수 있는 개수
 const REACT_PER_SEC = 12; // 초당 회복량
 
+// 방 이름을 비우면 붙는 물고기 이름
+const ROOM_NAME_MAX = 20;
+const FISH = [
+  '고등어', '연어', '참치', '광어', '우럭', '갈치', '꽁치', '삼치', '방어', '도미',
+  '농어', '숭어', '복어', '아귀', '전갱이', '정어리', '멸치', '청어', '대구', '명태',
+  '가자미', '쥐치', '볼락', '붕어', '잉어', '메기', '송어', '빙어', '쏘가리', '금붕어',
+  '개복치', '흰동가리', '블루탱', '가오리', '철갑상어', '망둥어', '장어', '꺽지', '피라미', '열빙어',
+];
+
 const rooms = new Map();
 let joinSeq = 0;
+
+// 지금 열려 있는 방 이름과 겹치지 않는 물고기 이름을 고릅니다.
+function fishName() {
+  const used = new Set([...rooms.values()].map((r) => r.name));
+  const free = FISH.filter((f) => !used.has(f));
+  if (free.length) return pick(free);
+  const base = pick(FISH);
+  let n = 2;
+  while (used.has(`${base} ${n}`)) n++;
+  return `${base} ${n}`;
+}
+
+// ---------- 로비(첫 화면)의 열린 방 목록 ----------
+// 아직 방에 들어가지 않은 연결 중 목록을 요청한 연결에만 보냅니다.
+const lobbyWatchers = new Set();
+let lobbyTimer = null;
+function roomSummary(room) {
+  const host = room.players.get(room.hostId);
+  return {
+    code: room.code,
+    name: room.name,
+    host: host ? host.nickname : null,
+    players: activePlayers(room).length,
+    maxPlayers: MAX_PLAYERS,
+    spectators: spectatorList(room).length,
+    maxSpectators: MAX_SPECTATORS,
+    phase: room.phase,
+    inProgress: ROUND_PHASES.has(room.phase),
+    roundNo: room.roundNo,
+  };
+}
+function roomList() {
+  return [...rooms.values()]
+    .map((r) => [r, roomSummary(r)])
+    // 바로 참가할 수 있는 방을 먼저, 그다음 최근에 만든 방 순
+    .sort(([ra, a], [rb, b]) => {
+      const ja = !a.inProgress && a.players < a.maxPlayers;
+      const jb = !b.inProgress && b.players < b.maxPlayers;
+      return ja !== jb ? (ja ? -1 : 1) : rb.createdAt - ra.createdAt;
+    })
+    .slice(0, 100)
+    .map(([, s]) => s);
+}
+function sendRoomList(ws) { send(ws, { t: 'rooms', rooms: roomList() }); }
+// 방 상태가 바뀔 때마다 부르되, 0.25초에 한 번으로 묶어서 보냅니다.
+function scheduleLobby() {
+  if (lobbyTimer || lobbyWatchers.size === 0) return;
+  lobbyTimer = setTimeout(() => {
+    lobbyTimer = null;
+    const data = JSON.stringify({ t: 'rooms', rooms: roomList() });
+    for (const ws of lobbyWatchers) if (ws.readyState === 1) ws.send(data);
+  }, 250);
+}
 
 // ---------- 유틸 ----------
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 32자, 헷갈리는 0/O/1/I 제외
@@ -163,6 +225,7 @@ function viewFor(room, me) {
     me: me.id,
     meSpectator: !!me.spectator,
     code: room.code,
+    roomName: room.name,
     hostId: room.hostId,
     phase,
     deadline: room.deadline,
@@ -179,6 +242,7 @@ function viewFor(room, me) {
 }
 function broadcastState(room) {
   for (const p of room.players.values()) sendTo(p, viewFor(room, p));
+  scheduleLobby(); // 인원·단계가 바뀌었을 수 있으니 로비 목록도 갱신
 }
 
 // ---------- 단계 전환 ----------
@@ -442,6 +506,7 @@ function validNickname(raw) {
 }
 
 function attach(ws, room, p) {
+  lobbyWatchers.delete(ws); // 방에 들어가면 로비 목록은 더 받지 않음
   ws.room = room;
   ws.player = p;
   p.ws = ws;
@@ -495,8 +560,12 @@ function setSpectator(room, p, ws, value, by = null) {
 function createRoom(ws, msg) {
   const [nickname, e] = validNickname(msg.nickname);
   if (e) return err(ws, e);
+  const rawName = cleanLine(msg.roomName);
+  if ([...rawName].length > ROOM_NAME_MAX) return err(ws, `방 이름은 ${ROOM_NAME_MAX}자 이내로 정해 주세요.`);
   const room = {
     code: makeCode(),
+    name: rawName || fishName(), // 비우면 물고기 이름
+    createdAt: Date.now(),
     players: new Map(),
     hostId: null,
     phase: 'lobby',
@@ -566,6 +635,7 @@ function removePlayer(room, id, why) {
   if (room.players.size === 0) {
     clearPhaseTimer(room);
     rooms.delete(room.code);
+    scheduleLobby();
     return;
   }
   const who = p.spectator ? `관전자 ${p.nickname}` : p.nickname;
@@ -682,6 +752,7 @@ function onMessage(ws, data) {
   if (!msg || typeof msg.t !== 'string') return;
 
   if (!ws.player) {
+    if (msg.t === 'lobby') { lobbyWatchers.add(ws); return sendRoomList(ws); }
     if (msg.t === 'create') return createRoom(ws, msg);
     if (msg.t === 'join') return joinRoom(ws, msg);
     if (msg.t === 'resume') return resume(ws, msg);
@@ -741,7 +812,7 @@ wss.on('connection', (ws) => {
   ws.on('message', (data) => {
     try { onMessage(ws, data.toString()); } catch (e) { console.error(e); err(ws, '서버 오류가 발생했어요.'); }
   });
-  ws.on('close', () => onDisconnect(ws));
+  ws.on('close', () => { lobbyWatchers.delete(ws); onDisconnect(ws); });
   ws.on('error', () => {});
 });
 // 응답 없는 연결을 정리해 끊김을 빨리 감지합니다.

@@ -63,6 +63,35 @@ input:disabled { background: var(--surface-2); color: var(--muted); }
 
 /* ---------- 홈 ---------- */
 #home { display: grid; place-items: center; min-height: 100vh; padding: 24px 16px; }
+.home-grid {
+  display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 500px); gap: 20px;
+  align-items: start; justify-content: center; width: 100%; max-width: 940px;
+}
+.field .opt { font-weight: 500; }
+.rooms-card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 22px;
+  box-shadow: var(--shadow); min-height: 320px; max-height: calc(100vh - 48px);
+  display: flex; flex-direction: column;
+}
+.rooms-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+.rooms-head h2 { margin: 0; font-size: 20px; letter-spacing: -.01em; }
+.room-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; overflow-y: auto; }
+.room-item {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 14px; align-items: center;
+  border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px;
+}
+.room-item .rinfo { min-width: 0; }
+.room-item .rname { font-weight: 800; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-item .rmeta { font-size: 12px; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 2px; }
+.room-item .rcount { text-align: right; line-height: 1.2; }
+.room-item .rcount b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.room-item .rcount small { display: block; font-size: 11px; color: var(--muted); }
+.room-item .ractions { display: flex; gap: 6px; }
+.room-item .ractions button { padding: 8px 12px; font-size: 14px; }
+.status { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 99px; background: var(--surface-2); color: var(--muted); }
+.status.open { background: var(--accent-soft); color: var(--accent); }
+.rooms-empty { color: var(--muted); text-align: center; margin: auto 0; padding: 40px 0; }
+.room-title { font-weight: 700; max-width: 14em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-card {
   width: 100%; max-width: 420px; background: var(--surface); border: 1px solid var(--line);
   border-radius: 20px; padding: 32px 28px; box-shadow: var(--shadow);
@@ -113,8 +142,7 @@ input:disabled { background: var(--surface-2); color: var(--muted); }
 }
 .mycard .k { color: var(--muted); font-size: 12px; margin-right: 4px; }
 .mycard .v { font-weight: 700; }
-.mycard .v.role.liar { color: var(--liar); }
-.mycard .v.role.citizen { color: var(--citizen); }
+/* 멀리서 봐도 역할이 티 나지 않도록 라이어·시민 모두 같은 색 */
 
 /* 가려진 정보: 마우스를 올리거나(데스크톱) 길게 누르는 동안(터치)만 보입니다.
    가려진 상태는 라이어·시민이 완전히 같은 모양이어야 합니다. */
@@ -158,16 +186,13 @@ h2.stage-title { margin: 0 0 6px; font-size: 22px; letter-spacing: -.01em; }
   background: var(--surface-2); border-style: dashed;
 }
 .role-card.secret.revealed { border-style: solid; }
-.role-card.revealed.citizen { background: var(--citizen-soft); border-color: var(--citizen); }
-.role-card.revealed.liar { background: var(--liar-soft); border-color: var(--liar); }
+.role-card.secret.revealed { background: var(--surface); border-color: var(--text); }
 .role-card .secret-mask { display: grid; gap: 6px; justify-items: center; }
 .role-card .lock { font-size: 32px; line-height: 1; }
 .role-card .mask-title { font-size: 18px; font-weight: 800; }
 .role-card .tip { margin: 14px 0 0; color: var(--muted); font-size: 14px; max-width: 340px; }
 .role-card .label { font-size: 13px; font-weight: 700; letter-spacing: .08em; color: var(--muted); }
 .role-card .role { font-size: 30px; font-weight: 800; margin: 4px 0 16px; }
-.role-card.citizen .role { color: var(--citizen); }
-.role-card.liar .role { color: var(--liar); }
 .topic-line { text-align: center; color: var(--muted); margin: 0 0 8px; }
 .topic-line b { color: var(--text); font-size: 18px; margin-left: 6px; }
 .role-card .kv { display: flex; justify-content: center; gap: 28px; flex-wrap: wrap; }
@@ -313,9 +338,19 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
 #toast.show { opacity: 1; }
 
 /* ---------- 이모지 반응 ---------- */
-.react-panel { padding: 12px 14px; }
-.react-panel h3 { margin: 0 0 8px; font-size: 14px; display: flex; justify-content: space-between; }
-.emoji-bar { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 4px; }
+.chat form { position: relative; }
+.emoji-toggle { padding: 6px 8px; font-size: 20px; line-height: 1; border-color: transparent; }
+.emoji-toggle[aria-expanded="true"] { background: var(--surface-2); border-color: var(--line); }
+.emoji-pop {
+  position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); z-index: 6;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: var(--shadow); padding: 10px;
+}
+.emoji-pop-head { display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+.emoji-bar { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 4px; max-height: 220px; overflow-y: auto; }
+.mute-btn { padding: 2px 6px; font-size: 14px; line-height: 1; border-color: transparent; opacity: .55; }
+.mute-btn[aria-pressed="true"] { opacity: 1; background: var(--surface-2); }
+.slist .mute-btn { padding: 0 2px; font-size: 12px; margin-left: 4px; }
 .emoji-bar button {
   padding: 4px 0; font-size: 22px; line-height: 1.3; font-weight: 400; border-radius: 10px;
   background: var(--surface-2); border-color: transparent;
@@ -368,16 +403,8 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
   .chat { height: 380px; }
   .stage { padding: 16px; min-height: 0; }
   .lobby-code .big { font-size: 34px; }
-  /* 휴대폰: 반응 버튼은 화면 아래에 고정된 가로 스크롤 줄 */
-  .react-panel {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 15;
-    border-radius: 14px 14px 0 0; padding: 8px 10px;
-  }
-  .react-panel h3 { display: none; }
-  .emoji-bar { display: flex; overflow-x: auto; scrollbar-width: none; }
-  .emoji-bar button { flex: none; width: 42px; }
-  #room { padding-bottom: 80px; }
-  #toast { bottom: 84px; }
+  .home-grid { grid-template-columns: minmax(0, 1fr); max-width: 440px; }
+  .rooms-card { max-height: none; }
 }
 </style>
 </head>
@@ -385,12 +412,17 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
 
 <!-- 홈 -->
 <section id="home" class="hidden">
+  <div class="home-grid">
   <div class="home-card">
     <div class="brand"><h1>라이어 게임</h1><span class="ver">v0.1</span></div>
     <p class="lead">3~10명이 방 코드로 모여 라이어를 찾아내는 실시간 게임</p>
     <div class="field">
       <label for="nickInput">닉네임</label>
       <input id="nickInput" type="text" maxlength="12" placeholder="최대 12자" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="roomNameInput">방 이름 <span class="opt">(선택)</span></label>
+      <input id="roomNameInput" type="text" maxlength="20" placeholder="비우면 물고기 이름이 붙어요 🐟" autocomplete="off">
     </div>
     <button id="createBtn" class="primary full">새 방 만들기</button>
     <div class="divider">또는 방 코드로 입장</div>
@@ -411,12 +443,19 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
       </ul>
     </details>
   </div>
+  <aside class="rooms-card" aria-labelledby="roomsTitle">
+    <div class="rooms-head"><h2 id="roomsTitle">열린 방</h2><span id="roomsCount" class="muted small"></span></div>
+    <ul id="roomList" class="room-list" aria-live="polite"></ul>
+    <p id="roomsEmpty" class="rooms-empty">아직 열린 방이 없어요.<br>첫 방을 만들어 보세요!</p>
+  </aside>
+  </div>
 </section>
 
 <!-- 방 -->
 <section id="room" class="hidden">
   <div class="topbar">
     <span class="logo">라이어 게임</span>
+    <span id="roomTitle" class="room-title"></span>
     <span class="code-chip">방 코드 <b id="roomCode"></b><button id="copyBtn" class="ghost" type="button">링크 복사</button></span>
     <span id="phasePill" class="phase-pill"></span>
     <span id="specPill" class="phase-pill spec hidden">관전 중</span>
@@ -440,16 +479,17 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
           </div>
         </div>
       </div>
-      <div class="panel react-panel">
-        <h3><span>반응</span><span class="muted small">연타·꾹 누르기 가능</span></h3>
-        <div id="emojiBar" class="emoji-bar"></div>
-      </div>
       <div class="panel chat">
         <h3><span>방 채팅</span><span id="chatLockLabel" class="muted small"></span></h3>
         <div id="chatLog" class="chat-log" aria-live="polite"></div>
         <form id="chatForm" autocomplete="off">
           <input id="chatInput" type="text" maxlength="200" placeholder="메시지 입력">
+          <button id="emojiToggle" class="emoji-toggle ghost" type="button" aria-expanded="false" aria-controls="emojiPop" aria-label="이모지 반응 열기" title="이모지 반응">😀</button>
           <button id="chatSend" class="primary" type="submit">전송</button>
+          <div id="emojiPop" class="emoji-pop hidden" role="dialog" aria-label="이모지 반응">
+            <div class="emoji-pop-head"><span>반응 보내기</span><span class="muted small">연타·꾹 누르기 가능</span></div>
+            <div id="emojiBar" class="emoji-bar"></div>
+          </div>
         </form>
         <div class="counter"><span id="chatCount">0</span>/200</div>
       </div>
@@ -539,6 +579,7 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
     ws = new WebSocket(`${proto}://${location.host}`);
     ws.onopen = () => {
       if (session) ws.send(JSON.stringify({ t: 'resume', code: session.code, token: session.token }));
+      else ws.send(JSON.stringify({ t: 'lobby' })); // 첫 화면: 열린 방 목록 받기
       for (const m of queue) ws.send(JSON.stringify(m));
       queue = [];
     };
@@ -561,6 +602,10 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
     switch (m.t) {
       case 'react':
         onReact(m);
+        break;
+      case 'rooms':
+        roomsList = Array.isArray(m.rooms) ? m.rooms : [];
+        renderRooms();
         break;
       case 'joined':
         if (Array.isArray(m.emojis)) renderEmojiBar(m.emojis);
@@ -588,21 +633,16 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
           saveSession(null);
           state = null;
           render();
+          sendMsg({ t: 'lobby' });
         }
         toast(m.message);
         break;
       case 'kicked':
-        saveSession(null);
-        state = null; chat = [];
-        history.replaceState(null, '', location.pathname);
-        render();
+        backToLobby();
         toast('방장이 당신을 방에서 내보냈어요.');
         break;
       case 'left':
-        saveSession(null);
-        state = null; chat = [];
-        history.replaceState(null, '', location.pathname);
-        render();
+        backToLobby();
         break;
       case 'replaced':
         replaced = true;
@@ -632,12 +672,53 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
     try { localStorage.setItem('liar.nick', n); } catch {}
     return n;
   }
-  $('createBtn').onclick = () => { const n = nick(); if (n) sendMsg({ t: 'create', nickname: n }); };
-  function joinWith(spectate) {
+  $('createBtn').onclick = () => {
     const n = nick(); if (!n) return;
+    sendMsg({ t: 'create', nickname: n, roomName: $('roomNameInput').value.trim() });
+  };
+  $('roomNameInput').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing) $('createBtn').click(); });
+  function joinRoomCode(code, spectate) {
+    const n = nick(); if (!n) return;
+    sendMsg({ t: 'join', code, nickname: n, spectate });
+  }
+  function joinWith(spectate) {
     const code = $('codeInput').value.trim().toUpperCase();
     if (code.length !== 6) { toast('6자리 방 코드를 입력해 주세요.'); $('codeInput').focus(); return; }
-    sendMsg({ t: 'join', code, nickname: n, spectate });
+    joinRoomCode(code, spectate);
+  }
+  function backToLobby() {
+    saveSession(null);
+    state = null; chat = [];
+    history.replaceState(null, '', location.pathname);
+    render();
+    sendMsg({ t: 'lobby' });
+  }
+
+  // ---------- 로비: 열린 방 목록 (서버가 바뀔 때마다 보내 줌) ----------
+  let roomsList = [];
+  function renderRooms() {
+    const list = roomsList;
+    $('roomsCount').textContent = list.length ? `${list.length}개` : '';
+    $('roomsEmpty').classList.toggle('hidden', list.length > 0);
+    $('roomList').replaceChildren(...list.map((r) => {
+      const full = r.players >= r.maxPlayers;
+      const canPlay = !r.inProgress && !full;
+      const status = r.inProgress ? `게임 중 · ${r.roundNo}라운드` : full ? '가득 참' : r.phase === 'result' ? '결과 보는 중' : '대기 중';
+      const why = full ? '참가자 자리가 가득 찼어요 — 관전은 가능해요' : '게임이 진행 중이에요 — 끝나면 참가할 수 있어요';
+      return h('li', { class: 'room-item' },
+        h('div', { class: 'rinfo' },
+          h('div', { class: 'rname', title: r.name }, r.name),
+          h('div', { class: 'rmeta' },
+            h('span', { class: 'status' + (canPlay ? ' open' : '') }, status),
+            r.host ? h('span', null, `방장 ${r.host}`) : null,
+            r.spectators ? h('span', null, `관전 ${r.spectators}명`) : null,
+            h('span', null, r.code))),
+        h('div', { class: 'rcount', 'aria-label': `참가자 ${r.players}명, 최대 ${r.maxPlayers}명` },
+          h('b', null, r.players), h('span', { class: 'muted' }, `/${r.maxPlayers}`), h('small', null, '참가자')),
+        h('div', { class: 'ractions' },
+          h('button', { class: 'primary', disabled: !canPlay, title: canPlay ? `${r.name} 방에 참가` : why, onclick: () => joinRoomCode(r.code, false) }, '참가'),
+          h('button', { title: `${r.name} 방 관전`, onclick: () => joinRoomCode(r.code, true) }, '관전')));
+    }));
   }
   $('joinBtn').onclick = () => joinWith(false);
   $('watchBtn').onclick = () => joinWith(true);
@@ -688,8 +769,10 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
     $('room').classList.toggle('hidden', !inRoom);
     if (!inRoom) { document.title = '라이어 게임'; return; }
     if (justEntered) $('chatLog').scrollTop = $('chatLog').scrollHeight;
-    document.title = `${PHASE_LABEL[state.phase]} · 라이어 게임`;
+    document.title = `${state.roomName} · ${PHASE_LABEL[state.phase]} · 라이어 게임`;
     $('roomCode').textContent = state.code;
+    $('roomTitle').textContent = state.roomName ? `· ${state.roomName}` : '';
+    $('roomTitle').title = state.roomName || '';
     $('phasePill').textContent = state.round && state.phase !== 'lobby' ? `라운드 ${state.round.no} · ${PHASE_LABEL[state.phase]}` : PHASE_LABEL[state.phase];
     $('specPill').classList.toggle('hidden', !state.meSpectator);
     renderPlayers();
@@ -719,6 +802,7 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
             p.id === state.me ? h('span', { class: 'tag me' }, '나') : null),
           st),
         h('div', { class: 'score' }, p.score, h('small', null, '점')),
+        p.id !== state.me ? muteBtn(p) : null,
         canManage ? h('button', {
           class: 'hmenu-btn ghost', type: 'button', 'aria-label': `${p.nickname} 관리`,
           'aria-expanded': hostMenu.pid === p.id ? 'true' : 'false',
@@ -739,7 +823,7 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
       title: isHost() ? '눌러서 관리' : (s.connected ? '' : '연결 끊김'),
       'data-pid': s.id,
       onclick: isHost() ? () => toggleHostMenu(s.id) : null,
-    }, s.nickname, s.id === state.me ? ' (나)' : '')));
+    }, s.nickname, s.id === state.me ? ' (나)' : '', s.id !== state.me ? muteBtn(s) : null)));
     const sMenuFor = isHost() && specs.find((s) => s.id === hostMenu.pid);
     $('specMenu').replaceChildren(...(sMenuFor ? [hostMenuEl(sMenuFor, true)] : []));
     for (const pid of combos.keys()) paintBadge(pid, false); // 다시 그려도 연타 배지 유지
@@ -833,8 +917,45 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
       }, e);
     }));
   }
+  // ---------- 사람별 이모지 끄기 (내 화면에서만) ----------
+  const muted = new Set();
+  try { for (const id of JSON.parse(sessionStorage.getItem('liar.muted') || '[]')) muted.add(id); } catch {}
+  function muteBtn(p) {
+    const on = muted.has(p.id);
+    return h('button', {
+      class: 'mute-btn ghost', type: 'button', 'aria-pressed': on ? 'true' : 'false',
+      'aria-label': on ? `${p.nickname}님 이모지 다시 보기` : `${p.nickname}님 이모지 끄기`,
+      title: on ? '이 사람의 이모지 다시 보기' : '이 사람의 이모지 끄기 (내 화면에서만)',
+      onclick: (e) => {
+        e.stopPropagation(); // 관전자 칩의 방장 메뉴가 열리지 않게
+        on ? muted.delete(p.id) : muted.add(p.id);
+        try { sessionStorage.setItem('liar.muted', JSON.stringify([...muted])); } catch {}
+        if (!on) { // 끄는 즉시 떠 있는 배지·이모지도 치움
+          const c = combos.get(p.id);
+          if (c) { clearTimeout(c.timer); combos.delete(p.id); }
+          for (const el of document.querySelectorAll(`#fxLayer [data-from="${CSS.escape(p.id)}"]`)) el.remove();
+        }
+        renderPlayers();
+      },
+    }, on ? '🔕' : '🔔');
+  }
+
+  // ---------- 이모지 열기/닫기 (채팅 입력칸 옆 버튼) ----------
+  function setEmojiOpen(open) {
+    $('emojiPop').classList.toggle('hidden', !open);
+    $('emojiToggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+    $('emojiToggle').setAttribute('aria-label', open ? '이모지 반응 닫기' : '이모지 반응 열기');
+  }
+  $('emojiToggle').addEventListener('click', () => setEmojiOpen($('emojiPop').classList.contains('hidden')));
+  document.addEventListener('click', (e) => {
+    if ($('emojiPop').classList.contains('hidden')) return;
+    if (e.target.closest && e.target.closest('#emojiPop, #emojiToggle')) return;
+    setEmojiOpen(false);
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setEmojiOpen(false); });
+
   function onReact(m) {
-    if (!state) return;
+    if (!state || muted.has(m.playerId)) return;
     const prev = combos.get(m.playerId);
     if (prev) clearTimeout(prev.timer);
     const count = prev && prev.emoji === m.emoji ? prev.count + 1 : 1;
@@ -874,10 +995,10 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
       `--rise:${-Math.round(55 + Math.random() * 40)}vh`,
       `--dur:${(1.8 + Math.random() * 1.3).toFixed(2)}s`,
     ].join(';');
-    addFx(h('div', { class: 'fx', style }, h('span', { class: 'e' }, emoji), h('span', { class: 'n' }, nameOf(pid))));
+    addFx(h('div', { class: 'fx', style, 'data-from': pid }, h('span', { class: 'e' }, emoji), h('span', { class: 'n' }, nameOf(pid))));
   }
   function spawnMega(emoji, pid, combo) {
-    addFx(h('div', { class: 'fx mega' }, h('span', { class: 'e' }, emoji), h('span', { class: 'n' }, `${nameOf(pid)} x${combo}!`)));
+    addFx(h('div', { class: 'fx mega', 'data-from': pid }, h('span', { class: 'e' }, emoji), h('span', { class: 'n' }, `${nameOf(pid)} x${combo}!`)));
   }
 
   function renderChatLock() {
