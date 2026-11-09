@@ -1,0 +1,25 @@
+# /etc/systemd/system/liar-game.service
+# liar.example.com 을 내 도메인으로 바꾼 뒤 복사하세요.
+[Unit]
+Description=Liar Game (Node.js WebSocket server)
+After=network.target
+
+[Service]
+Type=simple
+User=liar
+WorkingDirectory=/opt/liar-game
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=HOST=127.0.0.1
+Environment=ALLOWED_ORIGINS=https://liar.example.com
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=3
+# 최소 권한
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

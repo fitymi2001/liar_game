@@ -1,0 +1,881 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>라이어 게임</title>
+<style>
+:root {
+  --bg: #f4f1ea;
+  --surface: #fffdf8;
+  --surface-2: #efeae0;
+  --line: #ddd5c6;
+  --text: #22201c;
+  --muted: #6f685d;
+  --accent: #c2410c;
+  --accent-ink: #ffffff;
+  --accent-soft: #fbe3d4;
+  --citizen: #1d6a5a;
+  --citizen-soft: #d9efe8;
+  --liar: #9f1239;
+  --liar-soft: #f9dbe3;
+  --warn: #a16207;
+  --radius: 14px;
+  --shadow: 0 1px 2px rgba(0,0,0,.05), 0 6px 24px rgba(60,40,10,.06);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15130f; --surface: #1f1c17; --surface-2: #2a2620; --line: #3a352c;
+    --text: #f1ece2; --muted: #a59d8f; --accent: #f97316; --accent-ink: #1a1007;
+    --accent-soft: #3d2414; --citizen: #5fd0b4; --citizen-soft: #173a32;
+    --liar: #fb7199; --liar-soft: #43182a; --warn: #fbbf24;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 28px rgba(0,0,0,.35);
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  min-height: 100vh;
+}
+button, input { font: inherit; color: inherit; }
+button {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 10px;
+  padding: 10px 16px; cursor: pointer; font-weight: 600;
+}
+button:hover:not(:disabled) { border-color: var(--muted); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.primary:hover:not(:disabled) { filter: brightness(1.06); border-color: var(--accent); }
+button.ghost { background: transparent; }
+input[type=text] {
+  width: 100%; padding: 11px 13px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--surface); outline: none;
+}
+input[type=text]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+input:disabled { background: var(--surface-2); color: var(--muted); }
+.hidden { display: none !important; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+
+/* ---------- 홈 ---------- */
+#home { display: grid; place-items: center; min-height: 100vh; padding: 24px 16px; }
+.home-card {
+  width: 100%; max-width: 420px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 20px; padding: 32px 28px; box-shadow: var(--shadow);
+}
+.brand { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+.brand h1 { margin: 0; font-size: 30px; letter-spacing: -.02em; }
+.brand .ver { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 99px; padding: 1px 8px; }
+.home-card p.lead { margin: 4px 0 24px; color: var(--muted); }
+.field { display: grid; gap: 6px; margin-bottom: 16px; }
+.field label { font-size: 13px; font-weight: 600; color: var(--muted); }
+.row { display: flex; gap: 8px; }
+.row > input { flex: 1; min-width: 0; }
+.divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 13px; margin: 20px 0; }
+.divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+#codeInput { text-transform: uppercase; letter-spacing: .25em; font-weight: 700; }
+.home-card .full { width: 100%; }
+.rules { margin-top: 22px; font-size: 13px; color: var(--muted); }
+.rules summary { cursor: pointer; font-weight: 600; }
+.rules ul { padding-left: 18px; margin: 8px 0 0; }
+
+/* ---------- 방 ---------- */
+#room { max-width: 1120px; margin: 0 auto; padding: 16px; }
+.topbar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.topbar .logo { font-weight: 800; font-size: 18px; letter-spacing: -.02em; }
+.code-chip {
+  display: inline-flex; align-items: center; gap: 8px; background: var(--surface);
+  border: 1px solid var(--line); border-radius: 99px; padding: 4px 6px 4px 12px; font-size: 13px;
+}
+.code-chip b { letter-spacing: .18em; font-size: 15px; }
+.code-chip button { padding: 3px 10px; font-size: 12px; border-radius: 99px; }
+.phase-pill { background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 13px; padding: 4px 12px; border-radius: 99px; }
+.topbar .spacer { flex: 1; }
+.conn-banner {
+  background: var(--accent-soft); color: var(--accent); border-radius: 10px; padding: 8px 12px;
+  font-size: 14px; font-weight: 600; margin-bottom: 12px;
+}
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+.stage { padding: 22px; min-height: 420px; }
+.side { display: grid; gap: 16px; }
+
+.mycard {
+  display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 10px 14px; border-radius: 12px;
+  background: var(--surface-2); margin-bottom: 18px; font-size: 14px;
+}
+.mycard .k { color: var(--muted); font-size: 12px; margin-right: 4px; }
+.mycard .v { font-weight: 700; }
+.mycard.liar { background: var(--liar-soft); }
+.mycard.liar .v.role { color: var(--liar); }
+.mycard.citizen .v.role { color: var(--citizen); }
+
+.timer { margin-bottom: 18px; }
+.timer .top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.timer .title { font-weight: 700; font-size: 18px; }
+.timer .secs { font-variant-numeric: tabular-nums; font-weight: 800; font-size: 22px; }
+.timer .secs.low { color: var(--accent); }
+.bar { height: 6px; background: var(--surface-2); border-radius: 99px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--accent); border-radius: 99px; transition: width .2s linear; }
+
+h2.stage-title { margin: 0 0 6px; font-size: 22px; letter-spacing: -.01em; }
+.stage-sub { color: var(--muted); margin: 0 0 18px; }
+
+.lobby-code { text-align: center; padding: 18px 0 8px; }
+.lobby-code .big { font-size: 44px; font-weight: 800; letter-spacing: .22em; margin: 4px 0; }
+.lobby-actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 12px 0 22px; }
+.notice { padding: 12px 14px; border-radius: 12px; background: var(--surface-2); color: var(--muted); font-size: 14px; }
+
+.role-card {
+  text-align: center; border-radius: 18px; padding: 32px 20px; margin: 8px auto 10px; max-width: 440px;
+  border: 2px solid var(--line);
+}
+.role-card.citizen { background: var(--citizen-soft); border-color: var(--citizen); }
+.role-card.liar { background: var(--liar-soft); border-color: var(--liar); }
+.role-card .label { font-size: 13px; font-weight: 700; letter-spacing: .08em; color: var(--muted); }
+.role-card .role { font-size: 30px; font-weight: 800; margin: 4px 0 16px; }
+.role-card.citizen .role { color: var(--citizen); }
+.role-card.liar .role { color: var(--liar); }
+.role-card .kv { display: flex; justify-content: center; gap: 28px; flex-wrap: wrap; }
+.role-card .kv div { display: grid; gap: 2px; }
+.role-card .kv span { font-size: 12px; color: var(--muted); }
+.role-card .kv b { font-size: 24px; }
+
+.hints { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.hints li {
+  display: grid; grid-template-columns: 30px minmax(0,1fr); gap: 10px; align-items: start;
+  padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface);
+}
+.hints li .n {
+  width: 26px; height: 26px; border-radius: 50%; background: var(--surface-2); display: grid; place-items: center;
+  font-size: 13px; font-weight: 800;
+}
+.hints li .who { font-size: 13px; font-weight: 700; }
+.hints li .txt { overflow-wrap: anywhere; }
+.hints li.now { border-color: var(--accent); background: var(--accent-soft); }
+.hints li.now .n { background: var(--accent); color: var(--accent-ink); }
+.hints li.pending { opacity: .55; }
+.hints li.skipped .txt { color: var(--muted); font-style: italic; }
+.section-label { font-size: 12px; font-weight: 700; letter-spacing: .06em; color: var(--muted); margin: 20px 0 8px; text-transform: uppercase; }
+.compose { display: flex; gap: 8px; margin: 14px 0 4px; }
+.compose input { flex: 1; min-width: 0; }
+.counter { font-size: 12px; color: var(--muted); text-align: right; }
+
+.vote-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.vote-grid button { padding: 16px 12px; text-align: left; display: grid; gap: 2px; }
+.vote-grid button .sub { font-size: 12px; color: var(--muted); font-weight: 500; }
+.vote-grid button.chosen { border-color: var(--accent); background: var(--accent-soft); }
+.progress-line { margin-top: 14px; font-size: 14px; color: var(--muted); }
+
+.banner { border-radius: 18px; padding: 24px 20px; text-align: center; margin-bottom: 18px; }
+.banner.liar { background: var(--liar-soft); }
+.banner.citizen { background: var(--citizen-soft); }
+.banner .w { font-size: 30px; font-weight: 800; }
+.banner.liar .w { color: var(--liar); }
+.banner.citizen .w { color: var(--citizen); }
+.banner .why { margin-top: 4px; }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.fact { background: var(--surface-2); border-radius: 12px; padding: 10px 12px; }
+.fact span { display: block; font-size: 12px; color: var(--muted); }
+.fact b { font-size: 17px; overflow-wrap: anywhere; }
+table.tally { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.tally th, table.tally td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: left; }
+table.tally th { font-size: 12px; color: var(--muted); font-weight: 700; }
+table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
+.tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 99px; margin-left: 6px; vertical-align: 1px; }
+.tag.liar { background: var(--liar-soft); color: var(--liar); }
+.tag.win { background: var(--citizen-soft); color: var(--citizen); }
+.tag.host { background: var(--accent-soft); color: var(--accent); }
+.tag.me { background: var(--surface-2); color: var(--muted); }
+.result-actions { margin-top: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+/* 참가자 */
+.players { padding: 14px; }
+.players h3, .chat h3 { margin: 0 0 10px; font-size: 14px; display: flex; justify-content: space-between; }
+.plist { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.plist li { display: flex; align-items: center; gap: 10px; padding: 6px 4px; }
+.avatar {
+  width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-weight: 800;
+  color: #fff; flex: none; position: relative; font-size: 14px;
+}
+.avatar.off { filter: grayscale(1); opacity: .5; }
+.plist .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.plist .score { font-variant-numeric: tabular-nums; font-weight: 800; font-size: 14px; }
+.plist .score small { font-weight: 500; color: var(--muted); }
+.plist .state { font-size: 12px; color: var(--muted); }
+.plist .state.on { color: var(--citizen); font-weight: 700; }
+.plist .state.away { color: var(--warn); font-weight: 700; }
+
+.spec-wrap { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.spec-label { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; color: var(--muted); margin-bottom: 6px; }
+.slist { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.slist li { font-size: 13px; background: var(--surface-2); border-radius: 99px; padding: 3px 10px; }
+.slist li.off { opacity: .5; }
+.slist li.me { outline: 1px solid var(--muted); }
+.watch-btn { margin-top: 10px; font-size: 13px; font-weight: 500; color: var(--muted); padding: 8px; }
+.tag.spec { background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
+.phase-pill.spec { background: var(--surface-2); color: var(--muted); }
+.mycard.spectator { background: var(--surface-2); }
+.role-card.spectator { background: var(--surface-2); border-style: dashed; }
+.role-card.spectator .role { color: var(--muted); }
+.switch-line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; margin-top: 10px; }
+
+/* 채팅 */
+.chat { padding: 14px; display: flex; flex-direction: column; height: 460px; }
+.chat-log { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 4px; margin-bottom: 10px; }
+.msg { font-size: 14px; }
+.msg .meta { font-size: 12px; color: var(--muted); }
+.msg .meta b { color: var(--text); margin-right: 6px; }
+.msg .body { overflow-wrap: anywhere; white-space: pre-wrap; }
+.msg.mine .meta b { color: var(--accent); }
+.msg.system { text-align: center; font-size: 12px; color: var(--muted); background: var(--surface-2); border-radius: 8px; padding: 4px 8px; }
+.chat form { display: flex; gap: 6px; }
+.chat form input { flex: 1; min-width: 0; }
+.chat form button { padding: 10px 12px; }
+.chat .counter { margin-top: 4px; }
+
+#toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: calc(100% - 32px);
+  background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px; font-weight: 600;
+  box-shadow: var(--shadow); z-index: 10; opacity: 0; pointer-events: none; transition: opacity .2s;
+}
+#toast.show { opacity: 1; }
+
+@media (max-width: 860px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .chat { height: 380px; }
+  .stage { padding: 16px; min-height: 0; }
+  .lobby-code .big { font-size: 34px; }
+}
+</style>
+</head>
+<body>
+
+<!-- 홈 -->
+<section id="home" class="hidden">
+  <div class="home-card">
+    <div class="brand"><h1>라이어 게임</h1><span class="ver">v0.1</span></div>
+    <p class="lead">3~6명이 방 코드로 모여 라이어를 찾아내는 실시간 게임</p>
+    <div class="field">
+      <label for="nickInput">닉네임</label>
+      <input id="nickInput" type="text" maxlength="12" placeholder="최대 12자" autocomplete="off">
+    </div>
+    <button id="createBtn" class="primary full">새 방 만들기</button>
+    <div class="divider">또는 방 코드로 입장</div>
+    <div class="row">
+      <input id="codeInput" type="text" maxlength="6" placeholder="ABC123" autocomplete="off">
+      <button id="joinBtn">입장</button>
+    </div>
+    <button id="watchBtn" class="ghost full watch-btn" type="button">관전으로 입장 — 진행 중인 방도 바로 볼 수 있어요</button>
+    <details class="rules">
+      <summary>규칙 요약</summary>
+      <ul>
+        <li>시민은 주제와 제시어를, 라이어는 주제만 봅니다.</li>
+        <li>차례대로 한 문장 힌트(20초) → 토론(60초) → 비공개 투표(20초).</li>
+        <li>시민이 지목되면 라이어 승리. 라이어가 지목되면 20초 안에 제시어를 맞혀야 이깁니다.</li>
+        <li>최다 득표 동률이면 후보끼리 15초 재투표, 또 동률이면 라이어 승리.</li>
+        <li>이긴 사람마다 1점, 같은 방에서 점수가 누적됩니다.</li>
+      </ul>
+    </details>
+  </div>
+</section>
+
+<!-- 방 -->
+<section id="room" class="hidden">
+  <div class="topbar">
+    <span class="logo">라이어 게임</span>
+    <span class="code-chip">방 코드 <b id="roomCode"></b><button id="copyBtn" class="ghost" type="button">링크 복사</button></span>
+    <span id="phasePill" class="phase-pill"></span>
+    <span id="specPill" class="phase-pill spec hidden">관전 중</span>
+    <span class="spacer"></span>
+    <button id="leaveBtn" class="ghost" type="button">나가기</button>
+  </div>
+  <div id="connBanner" class="conn-banner hidden">서버와 연결이 끊겼어요. 다시 연결하는 중… (60초 안에 돌아오면 같은 참가자로 복귀합니다)</div>
+  <div class="layout">
+    <div id="stage" class="panel stage"></div>
+    <div class="side">
+      <div class="panel players">
+        <h3><span>참가자</span><span id="pcount" class="muted"></span></h3>
+        <ul id="plist" class="plist"></ul>
+        <div id="specWrap" class="spec-wrap hidden">
+          <div class="spec-label"><span>관전자</span><span id="scount"></span></div>
+          <ul id="slist" class="slist"></ul>
+        </div>
+      </div>
+      <div class="panel chat">
+        <h3><span>방 채팅</span><span id="chatLockLabel" class="muted small"></span></h3>
+        <div id="chatLog" class="chat-log" aria-live="polite"></div>
+        <form id="chatForm" autocomplete="off">
+          <input id="chatInput" type="text" maxlength="200" placeholder="메시지 입력">
+          <button id="chatSend" class="primary" type="submit">전송</button>
+        </form>
+        <div class="counter"><span id="chatCount">0</span>/200</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div id="toast" role="status"></div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const CHAT_PHASES = ['lobby', 'discussion', 'result'];
+  const PHASE_LABEL = { lobby: '대기실', role: '역할 확인', hint: '힌트 발표', discussion: '토론', vote: '투표', revote: '재투표', guess: '라이어의 추측', result: '결과' };
+  const REASON = {
+    citizenAccused: (n) => `시민 ${n.accused}님이 지목되어 라이어가 승리했습니다.`,
+    allAbstain: () => '모두 기권해 라이어가 승리했습니다.',
+    revoteTie: () => '재투표도 동률이라 라이어가 승리했습니다.',
+    revoteNoVotes: () => '재투표에 유효표가 없어 라이어가 승리했습니다.',
+    guessCorrect: (n) => `라이어가 지목됐지만 “${n.guess}”로 제시어를 맞혀 승리했습니다.`,
+    guessWrong: (n) => `라이어가 지목됐고, 추측 “${n.guess}”이(가) 틀려 시민이 승리했습니다.`,
+    guessTimeout: () => '라이어가 지목됐고, 시간 안에 답하지 못해 시민이 승리했습니다.',
+  };
+  const AV_COLORS = ['#c2410c', '#1d6a5a', '#7c3aed', '#0369a1', '#be185d', '#4d7c0f', '#b45309', '#334155'];
+
+  // DOM 헬퍼: 사용자 입력은 항상 textContent로만 넣습니다.
+  function h(tag, attrs, ...kids) {
+    const el = document.createElement(tag);
+    if (attrs) for (const [k, v] of Object.entries(attrs)) {
+      if (v == null || v === false) continue;
+      if (k === 'class') el.className = v;
+      else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+      else if (k in el && typeof v !== 'string') el[k] = v;
+      else el.setAttribute(k, v === true ? '' : v);
+    }
+    for (const kid of kids.flat(Infinity)) {
+      if (kid == null || kid === false) continue;
+      el.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+    }
+    return el;
+  }
+
+  // 한글 IME 조합 중 Enter를 눌러도 한 번에 제출되도록, 조합이 끝난 뒤 제출합니다.
+  function bindEnter(input, fn) {
+    let pending = false, last = 0;
+    const fire = () => { if (Date.now() - last < 150) return; last = Date.now(); fn(); };
+    input.addEventListener('keydown', (e) => {
+      const isEnter = e.key === 'Enter' || e.code === 'Enter' || e.code === 'NumpadEnter';
+      if (!isEnter) return;
+      e.preventDefault();
+      if (e.isComposing || e.keyCode === 229) { pending = true; return; }
+      fire();
+    });
+    input.addEventListener('compositionend', () => {
+      if (!pending) return;
+      pending = false;
+      setTimeout(fire);
+    });
+  }
+
+  // ---------- 상태 ----------
+  let ws = null;
+  let state = null;
+  let clockOffset = 0;
+  let chat = [];
+  let session = loadSession();
+  let queue = [];
+  let replaced = false;
+  let reconnectTimer = null;
+  let pendingVote = { key: null, id: null };
+
+  function loadSession() {
+    try { return JSON.parse(sessionStorage.getItem('liar.session') || 'null'); } catch { return null; }
+  }
+  function saveSession(s) {
+    session = s;
+    try { s ? sessionStorage.setItem('liar.session', JSON.stringify(s)) : sessionStorage.removeItem('liar.session'); } catch {}
+  }
+
+  // ---------- 연결 ----------
+  function connect() {
+    clearTimeout(reconnectTimer);
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${proto}://${location.host}`);
+    ws.onopen = () => {
+      if (session) ws.send(JSON.stringify({ t: 'resume', code: session.code, token: session.token }));
+      for (const m of queue) ws.send(JSON.stringify(m));
+      queue = [];
+    };
+    ws.onmessage = (ev) => {
+      let m; try { m = JSON.parse(ev.data); } catch { return; }
+      onServer(m);
+    };
+    ws.onclose = () => {
+      if (replaced) return;
+      if (session) $('connBanner').classList.remove('hidden');
+      reconnectTimer = setTimeout(connect, 1500);
+    };
+  }
+  function sendMsg(m) {
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify(m));
+    else queue.push(m);
+  }
+
+  function onServer(m) {
+    switch (m.t) {
+      case 'joined':
+        saveSession({ code: m.code, token: m.token });
+        $('connBanner').classList.add('hidden');
+        history.replaceState(null, '', `?room=${m.code}`);
+        break;
+      case 'history':
+        chat = m.msgs.slice();
+        renderChat(true);
+        break;
+      case 'chat':
+        chat.push(m.msg);
+        if (chat.length > 300) chat.shift();
+        appendChat(m.msg);
+        break;
+      case 'state':
+        state = m;
+        clockOffset = m.serverNow - Date.now();
+        render();
+        break;
+      case 'error':
+        if (m.code === 'resume_failed') {
+          saveSession(null);
+          state = null;
+          render();
+        }
+        toast(m.message);
+        break;
+      case 'left':
+        saveSession(null);
+        state = null; chat = [];
+        history.replaceState(null, '', location.pathname);
+        render();
+        break;
+      case 'replaced':
+        replaced = true;
+        state = null;
+        render();
+        toast('다른 탭에서 같은 참가자로 접속해 이 탭의 연결을 닫았어요.');
+        break;
+    }
+  }
+
+  let toastTimer;
+  function toast(text) {
+    const t = $('toast');
+    t.textContent = text;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
+  }
+
+  // ---------- 홈 ----------
+  const params = new URLSearchParams(location.search);
+  if (params.get('room')) $('codeInput').value = params.get('room').toUpperCase().slice(0, 6);
+  try { $('nickInput').value = localStorage.getItem('liar.nick') || ''; } catch {}
+  function nick() {
+    const n = $('nickInput').value.trim();
+    if (!n) { toast('닉네임을 입력해 주세요.'); $('nickInput').focus(); return null; }
+    try { localStorage.setItem('liar.nick', n); } catch {}
+    return n;
+  }
+  $('createBtn').onclick = () => { const n = nick(); if (n) sendMsg({ t: 'create', nickname: n }); };
+  function joinWith(spectate) {
+    const n = nick(); if (!n) return;
+    const code = $('codeInput').value.trim().toUpperCase();
+    if (code.length !== 6) { toast('6자리 방 코드를 입력해 주세요.'); $('codeInput').focus(); return; }
+    sendMsg({ t: 'join', code, nickname: n, spectate });
+  }
+  $('joinBtn').onclick = () => joinWith(false);
+  $('watchBtn').onclick = () => joinWith(true);
+  $('codeInput').addEventListener('input', (e) => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
+  $('codeInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('joinBtn').click(); });
+  $('nickInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') ($('codeInput').value.length === 6 ? $('joinBtn') : $('createBtn')).click();
+  });
+
+  // ---------- 방 공통 ----------
+  $('leaveBtn').onclick = () => {
+    const inRound = state && !state.meSpectator && !['lobby', 'result'].includes(state.phase);
+    if (inRound && !confirm('진행 중인 라운드를 나가면 라운드가 무효 처리됩니다. 나갈까요?')) return;
+    sendMsg({ t: 'leave' });
+  };
+  $('copyBtn').onclick = async () => {
+    const url = `${location.origin}${location.pathname}?room=${state.code}`;
+    try { await navigator.clipboard.writeText(url); toast('초대 링크를 복사했어요.'); }
+    catch { toast(url); }
+  };
+  $('chatInput').addEventListener('input', () => { $('chatCount').textContent = [...$('chatInput').value].length; });
+  function sendChat() {
+    const text = $('chatInput').value.trim();
+    if (!text || $('chatInput').disabled) return;
+    sendMsg({ t: 'chat', text });
+    $('chatInput').value = '';
+    $('chatCount').textContent = '0';
+  }
+  $('chatForm').onsubmit = (e) => { e.preventDefault(); sendChat(); };
+  bindEnter($('chatInput'), sendChat);
+
+  const nameOf = (id) => {
+    const p = state.players.find((x) => x.id === id) || state.spectators.find((x) => x.id === id);
+    return p ? p.nickname : (state.round && state.round.names[id]) || '(나간 참가자)';
+  };
+  const colorOf = (id) => {
+    let x = 0; for (const c of id) x = (x * 31 + c.charCodeAt(0)) >>> 0;
+    return AV_COLORS[x % AV_COLORS.length];
+  };
+  const isHost = () => state.hostId === state.me;
+  const remaining = () => state.deadline ? Math.max(0, state.deadline - (Date.now() + clockOffset)) : 0;
+  const fmtTime = (ts) => new Date(ts).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+
+  function render() {
+    const inRoom = !!state;
+    const justEntered = inRoom && $('room').classList.contains('hidden');
+    $('home').classList.toggle('hidden', inRoom);
+    $('room').classList.toggle('hidden', !inRoom);
+    if (!inRoom) { document.title = '라이어 게임'; return; }
+    if (justEntered) $('chatLog').scrollTop = $('chatLog').scrollHeight;
+    document.title = `${PHASE_LABEL[state.phase]} · 라이어 게임`;
+    $('roomCode').textContent = state.code;
+    $('phasePill').textContent = state.round && state.phase !== 'lobby' ? `라운드 ${state.round.no} · ${PHASE_LABEL[state.phase]}` : PHASE_LABEL[state.phase];
+    $('specPill').classList.toggle('hidden', !state.meSpectator);
+    renderPlayers();
+    renderChatLock();
+    renderStage();
+  }
+
+  function renderPlayers() {
+    const r = state.round;
+    const voting = state.phase === 'vote' || state.phase === 'revote';
+    const turnId = state.phase === 'hint' && r ? r.order[r.turn] : null;
+    $('pcount').textContent = `${state.players.length}/${state.maxPlayers}`;
+    $('plist').replaceChildren(...state.players.map((p) => {
+      let st = null;
+      if (!p.connected) st = h('div', { class: 'state away' }, '연결 끊김 · 재접속 대기');
+      else if (voting && p.inRound) st = r.voted.includes(p.id) ? h('div', { class: 'state on' }, '투표 완료') : h('div', { class: 'state' }, '투표 중…');
+      else if (turnId === p.id) st = h('div', { class: 'state on' }, '힌트 작성 중');
+      else if (r && !p.inRound && state.phase !== 'lobby') st = h('div', { class: 'state' }, '다음 라운드부터 참여');
+      return h('li', null,
+        h('div', { class: 'avatar' + (p.connected ? '' : ' off'), style: `background:${colorOf(p.id)}` }, [...p.nickname][0] || '?'),
+        h('div', { style: 'flex:1;min-width:0' },
+          h('div', { class: 'name' }, p.nickname,
+            p.id === state.hostId ? h('span', { class: 'tag host' }, '방장') : null,
+            p.id === state.me ? h('span', { class: 'tag me' }, '나') : null),
+          st),
+        h('div', { class: 'score' }, p.score, h('small', null, '점')));
+    }));
+    const specs = state.spectators;
+    $('specWrap').classList.toggle('hidden', specs.length === 0);
+    $('scount').textContent = `${specs.length}/${state.maxSpectators}`;
+    $('slist').replaceChildren(...specs.map((s) => h('li', {
+      class: (s.connected ? '' : 'off') + (s.id === state.me ? ' me' : ''),
+      title: s.connected ? '' : '연결 끊김',
+    }, s.nickname, s.id === state.me ? ' (나)' : '')));
+  }
+
+  function renderChatLock() {
+    let open = CHAT_PHASES.includes(state.phase);
+    let why = `${PHASE_LABEL[state.phase]} 중에는 채팅이 잠겨요`;
+    if (open && state.meSpectator && state.phase === 'discussion') { open = false; why = '토론은 참가자끼리만 — 결과 화면에서 채팅할 수 있어요'; }
+    $('chatInput').disabled = !open;
+    $('chatSend').disabled = !open;
+    $('chatInput').placeholder = open ? '메시지 입력 (최대 200자)' : why;
+    $('chatLockLabel').textContent = open ? '' : '잠김';
+  }
+
+  function msgEl(m) {
+    if (m.kind === 'system') return h('div', { class: 'msg system' }, `${m.text} · ${fmtTime(m.ts)}`);
+    const mine = state && m.playerId === state.me;
+    return h('div', { class: 'msg' + (mine ? ' mine' : '') },
+      h('div', { class: 'meta' }, h('b', null, m.nickname), m.spectator ? h('span', { class: 'tag spec', style: 'margin:0 6px 0 0' }, '관전') : null, fmtTime(m.ts)),
+      h('div', { class: 'body' }, m.text));
+  }
+  function renderChat() {
+    const log = $('chatLog');
+    log.replaceChildren(...chat.map(msgEl));
+    log.scrollTop = log.scrollHeight;
+  }
+  function appendChat(m) {
+    const log = $('chatLog');
+    const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
+    log.append(msgEl(m));
+    while (log.children.length > 300) log.firstChild.remove();
+    if (atBottom || (state && m.playerId === state.me)) log.scrollTop = log.scrollHeight;
+  }
+
+  // ---------- 무대(단계별 화면) ----------
+  function myCard() {
+    const r = state.round;
+    if (!r || state.phase === 'result') return null;
+    if (r.role === 'spectator') {
+      return h('div', { class: 'mycard spectator' },
+        h('span', null, h('span', { class: 'k' }, '내 역할'), h('span', { class: 'v' }, '관전 중')),
+        h('span', null, h('span', { class: 'k' }, '주제'), h('span', { class: 'v' }, r.topic)),
+        h('span', null, h('span', { class: 'k' }, '제시어'), h('span', { class: 'v' }, '결과에서 공개')));
+    }
+    return h('div', { class: 'mycard ' + r.role },
+      h('span', null, h('span', { class: 'k' }, '내 역할'), h('span', { class: 'v role' }, r.role === 'liar' ? '라이어' : '시민')),
+      h('span', null, h('span', { class: 'k' }, '주제'), h('span', { class: 'v' }, r.topic)),
+      h('span', null, h('span', { class: 'k' }, '제시어'), h('span', { class: 'v' }, r.word || '모름 — 힌트로 추측하세요')));
+  }
+  function timerEl(title) {
+    return h('div', { class: 'timer' },
+      h('div', { class: 'top' }, h('span', { class: 'title' }, title), h('span', { class: 'secs', id: 'timerSecs' }, '')),
+      h('div', { class: 'bar' }, h('i', { id: 'timerBar' })));
+  }
+  function hintBoard() {
+    const r = state.round;
+    const items = r.order.map((id, i) => {
+      const hint = r.hints.find((x) => x.order === i + 1);
+      const isNow = state.phase === 'hint' && r.turn === i;
+      let cls = '', txt;
+      if (hint && hint.text != null) txt = hint.text;
+      else if (hint) { cls = 'skipped'; txt = '시간 초과로 차례가 넘어갔어요'; }
+      else if (isNow) { cls = 'now'; txt = id === state.me ? '내 차례예요!' : '작성 중…'; }
+      else { cls = 'pending'; txt = '대기'; }
+      return h('li', { class: cls },
+        h('span', { class: 'n' }, i + 1),
+        h('div', null, h('div', { class: 'who' }, nameOf(id), id === state.me ? h('span', { class: 'tag me' }, '나') : null), h('div', { class: 'txt' }, txt)));
+    });
+    return [h('div', { class: 'section-label' }, '힌트 (발표 순서)'), h('ol', { class: 'hints' }, items)];
+  }
+
+  function renderStage() {
+    // 입력 중인 값과 포커스는 다시 그려도 유지합니다.
+    const keep = {};
+    for (const id of ['hintInput', 'guessInput']) {
+      const el = $(id);
+      if (el) keep[id] = { value: el.value, focus: document.activeElement === el };
+    }
+    const stage = $('stage');
+    const views = { lobby: lobbyView, role: roleView, hint: hintView, discussion: discussionView, vote: voteView, revote: voteView, guess: guessView, result: resultView };
+    stage.replaceChildren(...[].concat(views[state.phase]()).filter(Boolean));
+    for (const [id, k] of Object.entries(keep)) {
+      const el = $(id);
+      if (!el) continue;
+      el.value = k.value;
+      el.dispatchEvent(new Event('input'));
+      if (k.focus) el.focus();
+    }
+    tick();
+  }
+
+  function startBlock() {
+    const enough = state.players.length >= state.minPlayers;
+    const allOn = state.players.every((p) => p.connected);
+    if (state.meSpectator) {
+      const full = state.players.length >= state.maxPlayers;
+      return [
+        h('button', { class: 'primary', disabled: full, onclick: () => sendMsg({ t: 'spectate', value: false }) }, '게임에 참가하기'),
+        h('span', { class: 'muted small' }, full ? `참가자 자리가 가득 찼어요 (${state.maxPlayers}명).` : '관전 중이에요. 참가하면 다음 라운드부터 함께해요.'),
+      ];
+    }
+    const toSpec = h('button', { class: 'ghost', onclick: () => sendMsg({ t: 'spectate', value: true }) }, '관전으로 전환');
+    if (!isHost()) return [h('div', { class: 'notice' }, `방장(${nameOf(state.hostId)})이 라운드를 시작하기를 기다리는 중이에요.`), toSpec];
+    let why = '';
+    if (!enough) why = `${state.minPlayers}명 이상 모여야 시작할 수 있어요. (지금 ${state.players.length}명)`;
+    else if (!allOn) why = '연결이 끊긴 참가자가 재접속하거나 퇴장 처리될 때까지 기다려 주세요.';
+    return [
+      h('button', { class: 'primary', disabled: !enough || !allOn, onclick: () => sendMsg({ t: 'start' }) }, state.phase === 'result' ? '다음 라운드 시작' : '라운드 시작'),
+      toSpec,
+      why ? h('span', { class: 'muted small', style: 'flex-basis:100%;text-align:center' }, why) : null,
+    ];
+  }
+
+  function lobbyView() {
+    return [
+      h('h2', { class: 'stage-title' }, '대기실'),
+      h('p', { class: 'stage-sub' }, `친구들에게 방 코드나 링크를 보내 주세요. ${state.minPlayers}~${state.maxPlayers}명이 함께할 수 있어요.`),
+      h('div', { class: 'lobby-code' },
+        h('div', { class: 'muted small' }, '방 코드'),
+        h('div', { class: 'big' }, state.code)),
+      h('div', { class: 'lobby-actions' }, startBlock()),
+      h('div', { class: 'notice' }, '라운드마다 라이어 한 명과 발표 순서가 무작위로 정해져요. 시민은 주제와 제시어를, 라이어는 주제만 보게 됩니다.'),
+    ];
+  }
+
+  function roleView() {
+    const r = state.round;
+    const liar = r.role === 'liar';
+    if (r.role === 'spectator') {
+      return [
+        timerEl('역할 확인'),
+        h('div', { class: 'role-card spectator' },
+          h('div', { class: 'label' }, '당신은'),
+          h('div', { class: 'role' }, '관전 중'),
+          h('div', { class: 'kv' }, h('div', null, h('span', null, '주제'), h('b', null, r.topic)))),
+        h('p', { class: 'stage-sub', style: 'text-align:center' }, '제시어와 라이어는 결과 화면에서 공개돼요. 힌트를 보며 라이어를 함께 추리해 보세요.'),
+        h('div', { class: 'section-label' }, '발표 순서'),
+        h('div', { class: 'muted' }, r.order.map((id, i) => `${i + 1}. ${nameOf(id)}`).join('   ')),
+      ];
+    }
+    return [
+      timerEl('역할 확인'),
+      h('div', { class: 'role-card ' + r.role },
+        h('div', { class: 'label' }, '당신은'),
+        h('div', { class: 'role' }, liar ? '라이어' : '시민'),
+        h('div', { class: 'kv' },
+          h('div', null, h('span', null, '주제'), h('b', null, r.topic)),
+          liar ? null : h('div', null, h('span', null, '제시어'), h('b', null, r.word)))),
+      h('p', { class: 'stage-sub', style: 'text-align:center' }, liar
+        ? '제시어를 모르는 걸 들키지 마세요. 앞사람들의 힌트를 듣고 어울리는 말을 하세요.'
+        : '제시어를 직접 말하지 말고, 라이어가 눈치채지 못할 만큼만 힌트를 주세요.'),
+      h('div', { class: 'section-label' }, '발표 순서'),
+      h('div', { class: 'muted' }, r.order.map((id, i) => `${i + 1}. ${nameOf(id)}`).join('   ')),
+    ];
+  }
+
+  function hintView() {
+    const r = state.round;
+    const turnId = r.order[r.turn];
+    const mine = turnId === state.me;
+    const parts = [myCard(), timerEl(mine ? '내 차례 — 힌트를 한 문장으로' : `${nameOf(turnId)}님의 힌트 차례`)];
+    if (mine) {
+      const input = h('input', { id: 'hintInput', type: 'text', maxLength: 100, placeholder: r.role === 'liar' ? '앞사람 힌트에 어울리는 한 문장' : '제시어를 그대로 말하면 안 돼요', autocomplete: 'off' });
+      const count = h('span', null, '0');
+      input.addEventListener('input', () => { count.textContent = [...input.value].length; });
+      const submit = () => { const t = input.value.trim(); if (t) sendMsg({ t: 'hint', text: t }); };
+      bindEnter(input, submit);
+      parts.push(h('div', { class: 'compose' }, input, h('button', { class: 'primary', onclick: submit }, '제출')),
+        h('div', { class: 'counter' }, count, '/100'));
+      setTimeout(() => { if (document.activeElement !== input && !$('chatInput').matches(':focus')) input.focus(); });
+    }
+    parts.push(...hintBoard());
+    return parts;
+  }
+
+  function discussionView() {
+    return [
+      myCard(), timerEl('토론'),
+      h('p', { class: 'stage-sub' }, state.round.role === 'spectator'
+        ? '참가자들이 채팅으로 토론하는 중이에요. 관전자는 결과 화면에서 채팅할 수 있어요.'
+        : '오른쪽 방 채팅에서 힌트를 근거로 누가 라이어인지, 왜 의심되는지 이야기하세요.'),
+      ...hintBoard(),
+    ];
+  }
+
+  function voteView() {
+    const r = state.round;
+    const re = state.phase === 'revote';
+    const pool = re ? r.candidates : r.order;
+    const canVote = r.role !== 'spectator';
+    const done = r.myVote != null;
+    const voters = state.players.filter((p) => p.inRound).length;
+    const parts = [myCard(), timerEl(re ? '재투표 — 동률 후보 중 한 명' : '투표 — 라이어로 의심되는 한 명')];
+    if (re) parts.push(h('p', { class: 'stage-sub' }, `최다 득표가 동률이에요. ${r.candidates.map(nameOf).join(', ')} 중에서 다시 투표하세요.`));
+    else parts.push(h('p', { class: 'stage-sub' }, '투표는 비공개이며 제출하면 바꿀 수 없어요. 시간 안에 내지 않으면 기권입니다.'));
+    const key = `${r.no}:${state.phase}`;
+    if (pendingVote.key !== key) pendingVote = { key, id: null };
+    if (canVote) {
+      parts.push(h('div', { class: 'vote-grid' }, pool.filter((id) => id !== state.me).map((id) => {
+        const hint = r.hints.find((x) => x.playerId === id);
+        const chosen = done ? r.myVote === id : pendingVote.id === id;
+        return h('button', {
+          class: chosen ? 'chosen' : '',
+          disabled: done,
+          'aria-pressed': chosen ? 'true' : 'false',
+          onclick: () => { pendingVote.id = id; renderStage(); },
+        }, nameOf(id), h('span', { class: 'sub' }, hint && hint.text ? `“${hint.text}”` : '힌트 없음'));
+      })));
+      if (!done) {
+        parts.push(h('div', { class: 'result-actions' },
+          h('button', {
+            class: 'primary', disabled: !pendingVote.id,
+            onclick: () => sendMsg({ t: 'vote', targetId: pendingVote.id }),
+          }, pendingVote.id ? `${nameOf(pendingVote.id)}님에게 투표 확정` : '한 명을 고르세요'),
+          h('span', { class: 'muted small' }, '확정하면 바꿀 수 없어요.')));
+      }
+    }
+    parts.push(h('div', { class: 'progress-line' },
+      done ? `${nameOf(r.myVote)}님에게 투표했어요. ` : '',
+      `${r.voted.length}/${voters}명 투표 완료 — 모두 투표하면 바로 집계합니다.`));
+    parts.push(...hintBoard());
+    return parts;
+  }
+
+  function guessView() {
+    const r = state.round;
+    const parts = [myCard(), timerEl('라이어의 추측')];
+    if (r.role === 'liar') {
+      const input = h('input', { id: 'guessInput', type: 'text', maxLength: 30, placeholder: `주제: ${r.topic} — 제시어는?`, autocomplete: 'off' });
+      const submit = () => {
+        const t = input.value.trim();
+        if (t) sendMsg({ t: 'guess', text: t });
+      };
+      bindEnter(input, submit);
+      parts.push(
+        h('h2', { class: 'stage-title' }, '지목당했어요! 마지막 기회'),
+        h('p', { class: 'stage-sub' }, '제시어를 맞히면 라이어가 이깁니다. 기회는 한 번뿐이에요.'),
+        h('div', { class: 'compose' }, input, h('button', { class: 'primary', onclick: submit }, '정답 제출')));
+      setTimeout(() => input.focus());
+    } else {
+      parts.push(
+        h('h2', { class: 'stage-title' }, `${nameOf(r.accusedId)}님이 라이어였어요!`),
+        h('p', { class: 'stage-sub' }, '라이어가 제시어를 추측하는 중이에요. 맞히면 라이어, 틀리거나 시간이 지나면 시민이 승리합니다.'));
+    }
+    parts.push(...hintBoard());
+    return parts;
+  }
+
+  function resultView() {
+    const r = state.round;
+    const res = r.result;
+    const liarWin = res.winner === 'liar';
+    const iWon = res.winners.includes(state.me);
+    const why = REASON[res.reason]({ accused: r.accusedId ? nameOf(r.accusedId) : '', guess: res.guess || '' });
+    const cols = res.candidates ? ['1차 득표', '재투표'] : ['득표'];
+    const rows = r.order.slice().sort((a, b) => (res.firstTally[b] || 0) - (res.firstTally[a] || 0)).map((id) => {
+      const votedFor = res.votes[id];
+      return h('tr', null,
+        h('td', null, nameOf(id),
+          id === r.liarId ? h('span', { class: 'tag liar' }, '라이어') : null,
+          res.winners.includes(id) ? h('span', { class: 'tag win' }, '+1') : null),
+        h('td', { class: 'num' }, res.firstTally[id] || 0),
+        res.candidates ? h('td', { class: 'num' }, res.candidates.includes(id) ? (res.revoteTally && res.revoteTally[id]) || 0 : '—') : null,
+        h('td', { class: 'muted' }, votedFor ? `→ ${nameOf(votedFor)}` : '기권',
+          res.revotes ? (res.revotes[id] ? ` / 재투표 → ${nameOf(res.revotes[id])}` : ' / 재투표 기권') : ''));
+    });
+    return [
+      h('div', { class: 'banner ' + res.winner },
+        h('div', { class: 'w' }, liarWin ? '라이어 승리' : '시민 승리'),
+        h('div', { class: 'why' }, why),
+        r.role !== 'spectator' ? h('div', { class: 'muted small', style: 'margin-top:6px' }, iWon ? '당신의 팀이 이겼어요! +1점' : '아쉽게 졌어요.') : null),
+      h('div', { class: 'facts' },
+        h('div', { class: 'fact' }, h('span', null, '주제'), h('b', null, r.topic)),
+        h('div', { class: 'fact' }, h('span', null, '제시어'), h('b', null, r.word)),
+        h('div', { class: 'fact' }, h('span', null, '라이어'), h('b', null, nameOf(r.liarId))),
+        h('div', { class: 'fact' }, h('span', null, '지목된 사람'), h('b', null, r.accusedId ? nameOf(r.accusedId) : '없음')),
+        res.guess != null || res.reason === 'guessTimeout' ? h('div', { class: 'fact' }, h('span', null, '라이어의 추측'), h('b', null, res.guess || '(시간 초과)')) : null),
+      h('div', { class: 'section-label' }, '투표 결과'),
+      h('table', { class: 'tally' },
+        h('thead', null, h('tr', null, h('th', null, '참가자'), cols.map((c) => h('th', null, c)), h('th', null, '투표한 대상'))),
+        h('tbody', null, rows)),
+      ...hintBoard(),
+      h('div', { class: 'result-actions' }, startBlock()),
+    ];
+  }
+
+  // ---------- 타이머 ----------
+  function tick() {
+    if (!state || !state.deadline) return;
+    const ms = remaining();
+    const secsEl = $('timerSecs'), bar = $('timerBar');
+    if (secsEl) {
+      const s = Math.ceil(ms / 1000);
+      secsEl.textContent = `${s}초`;
+      secsEl.classList.toggle('low', s <= 5);
+    }
+    if (bar && state.duration) bar.style.width = `${Math.min(100, (ms / state.duration) * 100)}%`;
+  }
+  setInterval(tick, 200);
+
+  render();
+  connect();
+})();
+</script>
+</body>
+</html>

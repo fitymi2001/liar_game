@@ -1,0 +1,17 @@
+# Render Blueprint — Render 대시보드에서 New → Blueprint 로 이 저장소를 고르면 아래대로 만들어집니다.
+services:
+  - type: web
+    name: liar-game
+    runtime: node
+    plan: free
+    region: singapore        # 한국에서 가장 가까운 리전
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true         # main 브랜치에 push 하면 자동 재배포
+    numInstances: 1          # 게임 상태가 메모리에 있으므로 반드시 1대
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # 도메인 연결이 끝난 뒤 대시보드 Environment 에서 추가하면 다른 사이트의 접속을 막습니다.
+      # ALLOWED_ORIGINS=https://liar.example.com,https://liar-game.onrender.com

@@ -1,0 +1,86 @@
+// 주제별 제시어. aliases는 라이어의 추측 정답 판정에 함께 쓰이는 별칭입니다.
+// (2글자 이상 별칭은 시민 힌트에 제시어가 들어갔는지 검사할 때도 사용합니다.)
+module.exports = [
+  {
+    topic: '음식',
+    words: [
+      { word: '떡볶이', aliases: ['떡뽁이', '떡볶기', '떡뽀끼'] },
+      { word: '김치찌개', aliases: ['김치찌게'] },
+      { word: '짜장면', aliases: ['자장면'] },
+      { word: '치킨', aliases: ['통닭', '후라이드치킨'] },
+      { word: '삼겹살', aliases: ['삼겹'] },
+      { word: '비빔밥', aliases: [] },
+      { word: '라면', aliases: ['라멘'] },
+      { word: '피자', aliases: [] },
+      { word: '김밥', aliases: [] },
+      { word: '아이스크림', aliases: ['아이스크림콘'] },
+    ],
+  },
+  {
+    topic: '동물',
+    words: [
+      { word: '고양이', aliases: ['냥이', '야옹이'] },
+      { word: '강아지', aliases: ['개', '멍멍이'] },
+      { word: '기린', aliases: [] },
+      { word: '펭귄', aliases: [] },
+      { word: '코끼리', aliases: [] },
+      { word: '호랑이', aliases: ['범', '타이거'] },
+      { word: '토끼', aliases: [] },
+      { word: '돌고래', aliases: [] },
+      { word: '판다', aliases: ['팬더'] },
+    ],
+  },
+  {
+    topic: '장소',
+    words: [
+      { word: '학교', aliases: [] },
+      { word: '병원', aliases: [] },
+      { word: '도서관', aliases: [] },
+      { word: '공항', aliases: [] },
+      { word: '놀이공원', aliases: ['놀이동산', '테마파크'] },
+      { word: '편의점', aliases: [] },
+      { word: '영화관', aliases: ['극장', '영화극장'] },
+      { word: '찜질방', aliases: ['사우나'] },
+      { word: '해수욕장', aliases: ['바닷가', '해변'] },
+    ],
+  },
+  {
+    topic: '직업',
+    words: [
+      { word: '의사', aliases: ['의사선생님'] },
+      { word: '소방관', aliases: ['소방대원'] },
+      { word: '경찰', aliases: ['경찰관'] },
+      { word: '요리사', aliases: ['셰프', '쉐프'] },
+      { word: '선생님', aliases: ['교사'] },
+      { word: '가수', aliases: [] },
+      { word: '우주비행사', aliases: ['우주인'] },
+      { word: '택배기사', aliases: ['택배원', '배달기사'] },
+    ],
+  },
+  {
+    topic: '스포츠',
+    words: [
+      { word: '축구', aliases: [] },
+      { word: '야구', aliases: [] },
+      { word: '농구', aliases: [] },
+      { word: '수영', aliases: [] },
+      { word: '테니스', aliases: [] },
+      { word: '탁구', aliases: [] },
+      { word: '볼링', aliases: [] },
+      { word: '스키', aliases: [] },
+    ],
+  },
+  {
+    topic: '물건',
+    words: [
+      { word: '우산', aliases: [] },
+      { word: '냉장고', aliases: [] },
+      { word: '휴대폰', aliases: ['핸드폰', '스마트폰', '휴대전화'] },
+      { word: '안경', aliases: [] },
+      { word: '칫솔', aliases: [] },
+      { word: '베개', aliases: ['배개'] },
+      { word: '선풍기', aliases: [] },
+      { word: '지갑', aliases: [] },
+    ],
+  },
+];

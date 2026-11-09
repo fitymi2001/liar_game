@@ -1,0 +1,21 @@
+{
+  "name": "liar-game",
+  "version": "0.1.0",
+  "description": "라이어 게임 v0.1 — 실시간 멀티플레이 웹 게임",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/smoke.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "private": true
+}

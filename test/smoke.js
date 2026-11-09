@@ -1,0 +1,288 @@
+'use strict';
+// 실제 서버를 시간 배율 0.1로 띄우고 여러 클라이언트로 규칙을 검증합니다.
+// 실행: node test/smoke.js
+const { spawn } = require('child_process');
+const path = require('path');
+const WebSocket = require('ws');
+const assert = require('assert/strict');
+
+const PORT = 3999;
+const URL = `ws://localhost:${PORT}`;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+class Client {
+  constructor(name) { this.name = name; this.state = null; this.errors = []; this.chat = []; this.waiters = []; }
+  open() {
+    return new Promise((res, rej) => {
+      this.ws = new WebSocket(URL);
+      this.ws.on('open', res);
+      this.ws.on('error', rej);
+      this.ws.on('message', (d) => {
+        const m = JSON.parse(d);
+        if (m.t === 'state') this.state = m;
+        if (m.t === 'error') this.errors.push(m);
+        if (m.t === 'chat') this.chat.push(m.msg);
+        if (m.t === 'history') this.chat = m.msgs.slice();
+        if (m.t === 'joined') { this.code = m.code; this.token = m.token; this.id = m.playerId; }
+        for (const w of this.waiters.slice()) if (w.pred(this)) { this.waiters.splice(this.waiters.indexOf(w), 1); w.res(); }
+      });
+    });
+  }
+  send(m) { this.ws.send(JSON.stringify(m)); }
+  until(pred, ms = 8000, label = '') {
+    if (pred(this)) return Promise.resolve();
+    return new Promise((res, rej) => {
+      const w = { pred, res };
+      this.waiters.push(w);
+      setTimeout(() => rej(new Error(`[${this.name}] timeout: ${label}`)), ms);
+    });
+  }
+  phase(p, ms) { return this.until((c) => c.state && c.state.phase === p, ms, `phase ${p}`); }
+  async expectError(fn, re) {
+    const n = this.errors.length;
+    fn();
+    await this.until((c) => c.errors.length > n, 3000, `error ${re}`);
+    assert.match(this.errors[this.errors.length - 1].message, re);
+  }
+  close() { this.ws.close(); }
+}
+
+let ok = 0;
+const check = (label) => { ok++; console.log('  ✓', label); };
+
+async function joinAll(names) {
+  const cs = names.map((n) => new Client(n));
+  for (const c of cs) await c.open();
+  cs[0].send({ t: 'create', nickname: names[0] });
+  await cs[0].until((c) => c.code, 3000, 'create');
+  for (const c of cs.slice(1)) {
+    c.send({ t: 'join', code: cs[0].code, nickname: c.name });
+    await c.until((x) => x.code, 3000, 'join');
+  }
+  await cs[0].until((c) => c.state.players.length === names.length);
+  return cs;
+}
+const byId = (cs, id) => cs.find((c) => c.id === id);
+
+async function playHints(cs, makeText) {
+  // 힌트 차례를 따라 각자 제출
+  const host = cs[0];
+  for (let i = 0; i < host.state.round.order.length; i++) {
+    await host.until((c) => c.state.phase === 'hint' && c.state.round.turn === i, 5000, `turn ${i}`);
+    const who = byId(cs, host.state.round.order[i]);
+    who.send({ t: 'hint', text: makeText(who, i) });
+  }
+}
+
+async function main() {
+  const server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
+    env: { ...process.env, PORT: String(PORT), LIAR_TIME_SCALE: '0.1' },
+    stdio: ['ignore', 'pipe', 'inherit'],
+  });
+  await new Promise((r) => server.stdout.once('data', r));
+  try {
+    console.log('입장/대기실');
+    const cs = await joinAll(['민수', '지영', '현우']);
+    const [A, B, C] = cs;
+    assert.equal(A.code.length, 6); check('6자리 방 코드 생성');
+    assert.equal(A.state.hostId, A.id); check('방 만든 사람이 방장');
+
+    const X = new Client('X'); await X.open();
+    await X.expectError(() => X.send({ t: 'join', code: 'ZZZZZZ', nickname: 'x' }), /찾을 수 없/); check('없는 방 코드 거부');
+    await X.expectError(() => X.send({ t: 'join', code: A.code, nickname: '민수' }), /같은 닉네임/); check('중복 닉네임 거부');
+    await B.expectError(() => B.send({ t: 'start' }), /방장만/); check('방장 아닌 사람은 시작 불가');
+
+    B.send({ t: 'chat', text: '안녕하세요' });
+    await A.until((c) => c.chat.some((m) => m.text === '안녕하세요' && m.nickname === '지영'));
+    check('대기실 채팅 전달 (닉네임 포함)');
+    await B.expectError(() => B.send({ t: 'chat', text: 'ㄱ'.repeat(201) }), /200자/); check('201자 채팅 거부');
+
+    console.log('라운드 1: 라이어 지목 → 추측 실패 → 시민 승리');
+    A.send({ t: 'start' });
+    await Promise.all(cs.map((c) => c.phase('role')));
+    const r1 = A.state.round;
+    const liarId = cs.find((c) => c.state.round.role === 'liar').id;
+    assert.equal(cs.filter((c) => c.state.round.role === 'liar').length, 1); check('라이어는 정확히 한 명');
+    const word = cs.find((c) => c.state.round.role === 'citizen').state.round.word;
+    for (const c of cs) {
+      if (c.id === liarId) assert.equal(c.state.round.word, null);
+      else assert.equal(c.state.round.word, word);
+    }
+    check('제시어는 시민에게만 전송');
+    await A.expectError(() => A.send({ t: 'chat', text: 'x' }), /채팅할 수 없/); check('역할 확인 중 채팅 잠김');
+    await X.expectError(() => X.send({ t: 'join', code: A.code, nickname: '늦은사람' }), /진행 중/); check('진행 중 새 참가자 입장 거부');
+
+    await A.phase('hint', 4000);
+    const first = byId(cs, A.state.round.order[0]);
+    const notFirst = cs.find((c) => c !== first);
+    await notFirst.expectError(() => notFirst.send({ t: 'hint', text: '내 힌트' }), /차례가 아니/); check('차례가 아닌 힌트 거부');
+    if (first.id !== liarId) {
+      await first.expectError(() => first.send({ t: 'hint', text: `이건 ${word} 맞아요` }), /제시어/);
+      check('시민 힌트에 제시어 포함 시 거부');
+    }
+    await playHints(cs, (c, i) => `${c.name}의 힌트 ${i + 1}`);
+    await A.phase('discussion');
+    assert.equal(A.state.round.hints.length, 3);
+    assert.deepEqual(A.state.round.hints.map((h) => h.order), [1, 2, 3]);
+    check('힌트가 발표 순서·작성자와 함께 기록됨');
+    A.send({ t: 'chat', text: '토론 시작' });
+    await B.until((c) => c.chat.some((m) => m.text === '토론 시작')); check('토론 중 채팅 가능');
+
+    await A.phase('vote', 9000);
+    const liar = byId(cs, liarId);
+    await liar.expectError(() => liar.send({ t: 'vote', targetId: liarId }), /자기 자신/); check('자기 자신 투표 거부');
+    const others = cs.filter((c) => c.id !== liarId);
+    for (const c of others) c.send({ t: 'vote', targetId: liarId });
+    liar.send({ t: 'vote', targetId: others[0].id });
+    await others[0].expectError(() => others[0].send({ t: 'vote', targetId: liarId }), /(이미 투표|투표 시간)/);
+    check('투표 변경 불가');
+    await A.phase('guess', 3000); check('전원 투표 시 즉시 집계 → 라이어 추측');
+    await others[0].expectError(() => others[0].send({ t: 'guess', text: word }), /라이어만/); check('라이어만 추측 가능');
+    liar.send({ t: 'guess', text: '절대아닌단어' });
+    await A.phase('result');
+    assert.equal(A.state.round.result.winner, 'citizen');
+    assert.equal(A.state.round.result.reason, 'guessWrong');
+    assert.equal(A.state.round.word, word);
+    for (const c of cs) assert.equal(A.state.players.find((p) => p.id === c.id).score, c.id === liarId ? 0 : 1);
+    check('오답 → 시민 승리, 시민만 1점');
+
+    console.log('라운드 2: 시간 초과 힌트 + 동률 → 재투표 동률 → 라이어 승리');
+    A.send({ t: 'start' });
+    await A.phase('discussion', 15000); // 아무도 힌트를 내지 않으면 차례가 계속 넘어감
+    assert.ok(A.state.round.hints.every((h) => h.text === null)); check('시간 초과 시 힌트 차례 넘어감');
+    await A.phase('vote', 9000);
+    // A→B, B→C, C→A : 1:1:1 동률
+    A.send({ t: 'vote', targetId: B.id }); B.send({ t: 'vote', targetId: C.id }); C.send({ t: 'vote', targetId: A.id });
+    await A.phase('revote', 3000);
+    assert.equal(A.state.round.candidates.length, 3); check('동률 후보만 재투표');
+    A.send({ t: 'vote', targetId: B.id }); B.send({ t: 'vote', targetId: C.id }); C.send({ t: 'vote', targetId: A.id });
+    await A.phase('result', 3000);
+    assert.equal(A.state.round.result.winner, 'liar'); assert.equal(A.state.round.result.reason, 'revoteTie');
+    check('재투표도 동률 → 라이어 승리');
+
+    console.log('라운드 3: 전원 기권 → 라이어 승리');
+    A.send({ t: 'start' });
+    await A.phase('vote', 20000);
+    await A.phase('result', 4000);
+    assert.equal(A.state.round.result.reason, 'allAbstain'); check('전원 기권 → 라이어 승리');
+
+    console.log('라운드 4: 시민 지목 → 라이어 승리');
+    A.send({ t: 'start' });
+    await A.phase('vote', 20000);
+    const l4 = A.state.round.order.find((id) => byId(cs, id).state.round.role === 'liar');
+    const victim = cs.find((c) => c.id !== l4);
+    for (const c of cs) c.send({ t: 'vote', targetId: c === victim ? cs.find((x) => x !== victim).id : victim.id });
+    await A.phase('result', 3000);
+    assert.equal(A.state.round.result.reason, 'citizenAccused'); check('시민 지목 → 라이어 승리');
+
+    console.log('라운드 5: 라이어 지목 → 정답 추측 → 라이어 승리');
+    A.send({ t: 'start' });
+    await A.phase('vote', 20000);
+    const l5 = byId(cs, A.state.round.order.find((id) => byId(cs, id).state.round.role === 'liar'));
+    const w5 = cs.find((c) => c !== l5).state.round.word;
+    for (const c of cs) c.send({ t: 'vote', targetId: c === l5 ? cs.find((x) => x !== l5).id : l5.id });
+    await l5.phase('guess', 3000);
+    const before = A.state.players.find((p) => p.id === l5.id).score;
+    l5.send({ t: 'guess', text: ` ${[...w5].join(' ')}! ` });
+    await A.phase('result', 3000);
+    assert.equal(A.state.round.result.reason, 'guessCorrect');
+    assert.equal(A.state.players.find((p) => p.id === l5.id).score, before + 1);
+    check('공백·문장부호를 무시하고 정답 판정 → 라이어 승리 +1');
+
+    console.log('재접속');
+    A.send({ t: 'start' });
+    await A.phase('hint', 4000);
+    const cId = C.id, cToken = C.token;
+    C.close();
+    await A.until((c) => c.state.players.find((p) => p.id === cId && !p.connected)); check('연결 끊김 표시');
+    const C2 = new Client('현우2'); await C2.open();
+    C2.send({ t: 'resume', code: A.code, token: cToken });
+    await C2.until((c) => c.state && c.state.me === cId, 3000, 'resume');
+    assert.notEqual(C2.state.phase, 'lobby'); check('60초(배율) 안에 복귀하면 같은 참가자로 라운드 계속');
+    C2.close();
+    await A.phase('lobby', 9000);
+    assert.ok(!A.state.players.some((p) => p.id === cId));
+    assert.ok(A.chat.some((m) => /무효/.test(m.text)));
+    check('유예 시간 경과 → 퇴장 + 라운드 무효, 대기실 복귀');
+    const scores = Object.fromEntries(A.state.players.map((p) => [p.id, p.score]));
+
+    console.log('방장 위임 / 정원');
+    const D = new Client('D'); await D.open(); D.send({ t: 'join', code: A.code, nickname: '다은' }); await D.until((c) => c.code);
+    A.send({ t: 'leave' });
+    await B.until((c) => c.state.hostId === B.id); check('방장이 나가면 가장 먼저 들어온 사람에게 위임');
+    assert.equal(B.state.players.find((p) => p.id === B.id).score, scores[B.id]); check('무효 라운드는 점수 변화 없음');
+    const extra = [];
+    for (const n of ['e1', 'e2', 'e3', 'e4', 'e5']) {
+      const c = new Client(n); await c.open(); extra.push(c);
+      c.send({ t: 'join', code: A.code, nickname: n });
+      await c.until((x) => x.code || x.errors.length > 0, 3000, 'join extra');
+    }
+    assert.equal(B.state.players.length, 6);
+    assert.match(extra[4].errors[0].message, /가득/); check('7번째 입장 거부 (최대 6명)');
+
+    for (const c of [B, D, X, ...extra]) c.close();
+
+    console.log('관전자');
+    const ps = await joinAll(['가', '나', '다']);
+    const [P1, P2, P3] = ps;
+    const S = new Client('관전1'); await S.open();
+    S.send({ t: 'join', code: P1.code, nickname: '관전1', spectate: true });
+    await S.until((c) => c.state, 3000, 'spectator join');
+    assert.equal(S.state.meSpectator, true);
+    await P1.until((c) => c.state.spectators.length === 1);
+    assert.equal(P1.state.players.length, 3);
+    check('관전자로 입장 — 참가자 목록과 분리');
+    await S.expectError(() => S.send({ t: 'start' }), /방장만/); check('관전자는 방장이 될 수 없음');
+
+    P1.send({ t: 'start' });
+    await S.phase('role');
+    assert.equal(S.state.round.role, 'spectator');
+    assert.equal(S.state.round.word, null);
+    assert.equal(S.state.round.liarId, undefined);
+    assert.ok(!S.state.round.order.includes(S.id));
+    check('관전자에게는 결과 전까지 제시어·라이어 비공개, 발표 순서에서 제외');
+
+    const L = new Client('늦관전'); await L.open();
+    L.send({ t: 'join', code: P1.code, nickname: '늦관전', spectate: true });
+    await L.until((c) => c.state, 3000, 'late spectator');
+    assert.equal(L.state.round.word, null); check('라운드 진행 중에도 관전 입장 가능');
+    const late = new Client('늦참가'); await late.open();
+    await late.expectError(() => late.send({ t: 'join', code: P1.code, nickname: '늦참가' }), /관전으로 입장/);
+    check('진행 중 참가 거부 시 관전 안내');
+    await S.expectError(() => S.send({ t: 'spectate', value: false }), /라운드가 끝난 뒤/); check('라운드 중 참가 전환 불가');
+
+    await playHints(ps, (c, i) => `${c.name} 힌트 ${i}`);
+    await S.phase('discussion');
+    await S.expectError(() => S.send({ t: 'chat', text: '저 사람 같아요' }), /참가자만/); check('토론 중 관전자 채팅 차단');
+    await S.phase('vote', 9000);
+    await S.expectError(() => S.send({ t: 'vote', targetId: P1.id }), /참가자만/); check('관전자 투표 불가');
+    L.close(); // 관전자의 연결 끊김은 라운드에 영향 없음
+    for (const c of ps) c.send({ t: 'vote', targetId: ps.find((x) => x !== c).id });
+    await S.until((c) => c.state.phase === 'result' || c.state.phase === 'guess', 3000, 'after vote');
+    if (S.state.phase === 'guess') {
+      const lp = ps.find((c) => c.state.round.role === 'liar');
+      lp.send({ t: 'guess', text: '모름' });
+      await S.phase('result');
+    }
+    assert.ok(S.state.round.word && S.state.round.liarId); check('결과에서 관전자에게도 제시어·라이어 공개');
+    S.send({ t: 'chat', text: '재밌다' });
+    await P1.until((c) => c.chat.some((m) => m.text === '재밌다' && m.spectator)); check('결과 화면에서 관전자 채팅 (관전 표시)');
+
+    S.send({ t: 'spectate', value: false });
+    await P1.until((c) => c.state.players.length === 4 && c.state.players.some((p) => p.id === S.id)); check('결과 화면에서 관전 → 참가 전환');
+    P1.send({ t: 'start' });
+    await P1.phase('role');
+    assert.ok(P1.state.round.order.includes(S.id)); check('전환한 사람은 다음 라운드에 참여');
+    await P1.until((c) => c.chat.some((m) => /관전자 늦관전님이 재접속 시간/.test(m.text)), 9000, 'spectator grace');
+    assert.notEqual(P1.state.phase, 'lobby'); check('관전자 유예 만료는 라운드를 무효로 만들지 않음');
+    await P1.phase('result', 30000);
+    P1.send({ t: 'spectate', value: true });
+    await P2.until((c) => c.state.hostId === P2.id); check('방장이 관전으로 전환하면 다음 참가자에게 방장 위임');
+    for (const c of [...ps, S, late]) c.close();
+    console.log(`\n모두 통과: ${ok}개 검사`);
+  } finally {
+    server.kill();
+  }
+}
+
+main().catch((e) => { console.error('\n실패:', e); process.exit(1); });

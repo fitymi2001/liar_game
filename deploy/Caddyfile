@@ -1,0 +1,5 @@
+# nginx 대신 Caddy 를 쓰면 이것만으로 HTTPS 인증서 발급과 WebSocket 프록시가 끝납니다.
+# /etc/caddy/Caddyfile — liar.example.com 을 내 도메인으로 바꾸세요.
+liar.example.com {
+    reverse_proxy 127.0.0.1:3000
+}
