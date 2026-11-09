@@ -27,6 +27,7 @@ const TIMES = {
   guess: sec(20),
   grace: sec(60),
 };
+const DISCUSSION_MIN_LEFT = sec(10); // 모두 줄이기를 눌러도 남는 최소 토론 시간
 const MIN_PLAYERS = 3;
 const MAX_PLAYERS = 10;
 const MAX_SPECTATORS = 20; // 참가자 10명과 별도
@@ -356,26 +357,28 @@ function submitHint(room, p, ws, raw) {
 }
 
 // 토론 시간 조절: 참가자마다 라운드당 한 번, 줄이기(cut)나 늘리기(add) 중 하나만.
-// 한 번에 (토론 시간 ÷ 참가자 수)만큼 바뀌고, 모두 줄이기를 누르면 바로 투표로 넘어갑니다.
+// 한 번에 (토론 시간 ÷ 참가자 수)만큼 바뀌고, 모두 줄여도 최소 DISCUSSION_MIN_LEFT(10초)는 남습니다.
 function adjustDiscussion(room, p, ws, dir) {
   const r = room.round;
   if (dir !== 'cut' && dir !== 'add') return err(ws, '알 수 없는 요청이에요.');
   if (room.phase !== 'discussion') return err(ws, '토론 중에만 시간을 줄이거나 늘릴 수 있어요.');
   if (!r.participants.includes(p.id)) return err(ws, '이번 라운드 참가자만 토론 시간을 바꿀 수 있어요.');
   if (r.timeVotes[p.id]) return err(ws, '토론 시간 줄이기·늘리기는 둘 중 하나만, 한 번만 누를 수 있어요.');
-  r.timeVotes[p.id] = dir;
+  const now = Date.now();
   const step = Math.floor(TIMES.discussion / r.participants.length);
-  room.deadline += dir === 'cut' ? -step : step;
-  const left = room.deadline - Date.now();
-  const cuts = Object.values(r.timeVotes).filter((d) => d === 'cut').length;
-  const allCut = cuts >= r.participants.length;
-  const secs = Math.round(step / 1000 / SCALE);
-  system(room, `${p.nickname}님이 토론 시간을 ${secs}초 ${dir === 'cut' ? '줄였어요' : '늘렸어요'}.`);
-  if (allCut || left <= 0) {
-    clearPhaseTimer(room);
-    if (allCut) system(room, '모두 줄이기를 눌러 토론을 마칩니다.');
-    return startVote(room);
+  const floor = now + DISCUSSION_MIN_LEFT;
+  if (dir === 'cut' && room.deadline <= floor) {
+    // 선택권은 쓰지 않은 것으로 둡니다 (늘리기는 여전히 가능)
+    return err(ws, `남은 시간이 ${Math.round(DISCUSSION_MIN_LEFT / 1000 / SCALE)}초 이하라 더 줄일 수 없어요.`);
   }
+  r.timeVotes[p.id] = dir;
+  const before = room.deadline;
+  room.deadline = dir === 'cut' ? Math.max(before - step, floor) : before + step;
+  const changed = Math.abs(room.deadline - before);
+  const secs = Math.round(changed / 1000 / SCALE);
+  system(room, `${p.nickname}님이 토론 시간을 ${secs}초 ${dir === 'cut' ? '줄였어요' : '늘렸어요'}.`
+    + (dir === 'cut' && room.deadline === floor ? ` (최소 ${Math.round(DISCUSSION_MIN_LEFT / 1000 / SCALE)}초는 남아요)` : ''));
+  const left = room.deadline - now;
   if (left > room.duration) room.duration = left; // 늘어난 만큼 타이머 막대도 기준을 키움
   armTimer(room, left);
   broadcastState(room);

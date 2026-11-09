@@ -1136,7 +1136,7 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
   function renderStage() {
     // 입력 중인 값과 포커스는 다시 그려도 유지합니다.
     const keep = {};
-    for (const id of ['hintInput', 'guessInput']) {
+    for (const id of ['hintInput', 'guessInput', 'defenseInput']) {
       const el = $(id);
       if (el) keep[id] = { value: el.value, focus: document.activeElement === el };
     }
@@ -1258,7 +1258,7 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
     ];
   }
 
-  // 토론 시간 줄이기/늘리기: 참가자마다 둘 중 하나만 한 번, (토론 시간 ÷ 참가자 수)초씩.
+  // 토론 시간 줄이기/늘리기: 참가자마다 둘 중 하나만 한 번, (토론 시간 ÷ 참가자 수)초씩. 최소 10초는 남음.
   // 누르면 버튼이 사라지고 내가 고른 것만 표시됩니다.
   function skipBlock() {
     const r = state.round;
@@ -1280,7 +1280,7 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
     return h('div', { class: 'skip-row' },
       control,
       h('span', { class: 'muted small' },
-        `줄이기 ${cuts} · 늘리기 ${adds} / ${total}명 — 한 사람당 둘 중 하나만 한 번, 모두 줄이면 바로 투표`));
+        `줄이기 ${cuts} · 늘리기 ${adds} / ${total}명 — 한 사람당 둘 중 하나만 한 번, 최소 10초는 남아요`));
   }
 
   function voteView() {
@@ -1337,13 +1337,34 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
   function defenseView() {
     const r = state.round;
     const me = r.accusedId === state.me;
+    let middle;
+    if (me) {
+      // 지목된 사람만: 변론을 바로 보낼 수 있는 입력칸 (채팅과 같은 경로로 전송)
+      const input = h('input', { id: 'defenseInput', type: 'text', maxLength: 200, placeholder: '최후의 변론을 입력하고 Enter', autocomplete: 'off' });
+      const count = h('span', null, '0');
+      input.addEventListener('input', () => { count.textContent = [...input.value].length; });
+      const submit = () => {
+        const t = input.value.trim();
+        if (!t) return;
+        sendMsg({ t: 'chat', text: t });
+        input.value = ''; count.textContent = '0';
+        input.focus();
+      };
+      bindEnter(input, submit);
+      middle = [
+        h('div', { class: 'compose' }, input, h('button', { class: 'primary', onclick: submit }, '변론 보내기')),
+        h('div', { class: 'counter' }, count, '/200'),
+        h('p', { class: 'stage-sub', style: 'text-align:center;margin-top:6px' }, '여러 번 보낼 수 있고, 말로 해도 돼요. 끝나면 나머지 사람들이 지목에 찬성할지 반대할지 정합니다.'),
+      ];
+      setTimeout(() => { if (document.activeElement !== input) input.focus(); });
+    } else {
+      middle = [h('p', { class: 'stage-sub', style: 'text-align:center' }, '지목된 사람의 이야기를 들어 보세요. 곧 지목에 찬성/반대 투표를 합니다.')];
+    }
     return [
       myCard(),
       timerEl(me ? '최후의 변론 — 지금 말하세요' : '최후의 변론'),
       defenseBox('최다 득표 · 최후의 변론'),
-      h('p', { class: 'stage-sub', style: 'text-align:center' }, me
-        ? '오른쪽 채팅창에 변론을 남기거나 직접 말하세요. 끝나면 나머지 사람들이 지목에 찬성할지 반대할지 정합니다.'
-        : '지목된 사람의 이야기를 들어 보세요. 곧 지목에 찬성/반대 투표를 합니다.'),
+      ...middle,
       ...hintBoard(),
     ];
   }

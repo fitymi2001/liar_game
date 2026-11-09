@@ -83,7 +83,21 @@ async function confirmAll(cs, agree, observer = cs[0]) {
   for (const c of cs) if (c.id !== acc) c.send({ t: 'confirm', agree });
 }
 
+function checkWords() {
+  const WORDS = require('../words');
+  const all = WORDS.flatMap((tp) => tp.words.map((x) => ({ ...x, topic: tp.topic })));
+  const names = all.map((x) => x.word);
+  assert.equal(new Set(names).size, names.length, '중복 제시어');
+  for (const x of all) assert.ok([...x.word].length >= 2, `한 글자 제시어: ${x.word}`);
+  const wordSet = new Set(names);
+  for (const x of all) for (const a of x.aliases) assert.ok(!wordSet.has(a) || a === x.word, `별칭이 다른 제시어와 같음: ${a}`);
+  assert.ok(all.length >= 200, `제시어 ${all.length}개`);
+  check(`제시어 ${all.length}개 · 주제 ${WORDS.length}개 — 중복·한 글자 없음`);
+}
+
 async function main() {
+  console.log('제시어 목록');
+  checkWords();
   const server = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
     env: { ...process.env, PORT: String(PORT), LIAR_TIME_SCALE: '0.1' },
     stdio: ['ignore', 'pipe', 'inherit'],
@@ -200,10 +214,13 @@ async function main() {
     A.send({ t: 'start' });
     await A.phase('discussion', 15000); // 아무도 힌트를 내지 않으면 차례가 계속 넘어감
     assert.ok(A.state.round.hints.every((h) => h.text === null)); check('시간 초과 시 힌트 차례 넘어감');
-    const tAll = Date.now();
     for (const c of cs) c.send({ t: 'time', dir: 'cut' });
+    await A.until((c) => Object.keys(c.state.round.timeVotes).length === 3, 3000, 'all cut');
+    const leftAll = A.state.deadline - Date.now();
+    assert.equal(A.state.phase, 'discussion');
+    assert.ok(leftAll > 700 && leftAll <= 1050, `left ${leftAll}`);
+    check('모두 줄이기를 눌러도 최소 10초(배율 적용)는 남음');
     await A.phase('vote', 3000);
-    assert.ok(Date.now() - tAll < 1000); check('모두 줄이기를 누르면 바로 투표로');
     // A→B, B→C, C→A : 1:1:1 동률
     A.send({ t: 'vote', targetId: B.id }); B.send({ t: 'vote', targetId: C.id }); C.send({ t: 'vote', targetId: A.id });
     await A.phase('revote', 3000);
@@ -215,7 +232,16 @@ async function main() {
 
     console.log('라운드 3: 전원 기권 → 라이어 승리');
     A.send({ t: 'start' });
-    await A.phase('vote', 20000);
+    await A.phase('discussion', 20000);
+    await sleep(Math.max(0, A.state.deadline - Date.now() - 600));
+    await A.expectError(() => A.send({ t: 'time', dir: 'cut' }), /더 줄일 수 없어요/);
+    check('남은 시간이 10초(배율) 이하면 줄이기 거절');
+    const dLow = A.state.deadline;
+    A.send({ t: 'time', dir: 'add' });
+    await B.until((c) => c.state.round.timeVotes[A.id] === 'add', 3000, 'add after refused cut');
+    assert.ok(Math.abs(B.state.deadline - dLow - 2000) < 50);
+    check('거절된 줄이기는 선택권을 쓰지 않음 (늘리기 가능)');
+    await A.phase('vote', 5000);
     await A.phase('result', 4000);
     assert.equal(A.state.round.result.reason, 'allAbstain'); check('전원 기권 → 라이어 승리');
 
