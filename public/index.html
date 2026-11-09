@@ -113,9 +113,25 @@ input:disabled { background: var(--surface-2); color: var(--muted); }
 }
 .mycard .k { color: var(--muted); font-size: 12px; margin-right: 4px; }
 .mycard .v { font-weight: 700; }
-.mycard.liar { background: var(--liar-soft); }
-.mycard.liar .v.role { color: var(--liar); }
-.mycard.citizen .v.role { color: var(--citizen); }
+.mycard .v.role.liar { color: var(--liar); }
+.mycard .v.role.citizen { color: var(--citizen); }
+
+/* 가려진 정보: 마우스를 올리거나(데스크톱) 길게 누르는 동안(터치)만 보입니다.
+   가려진 상태는 라이어·시민이 완전히 같은 모양이어야 합니다. */
+.secret {
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  touch-action: none; cursor: default;
+}
+.secret:not(.revealed) .secret-value { display: none; }
+.secret.revealed .secret-mask { display: none; }
+.mycard .secret {
+  display: inline-flex; align-items: center; gap: 8px 16px; flex-wrap: wrap;
+  min-width: 15em; min-height: 30px; padding: 3px 10px; border-radius: 8px;
+  border: 1px dashed var(--line); background: var(--surface);
+}
+.mycard .secret.revealed { border-style: solid; }
+.mycard .secret-mask { color: var(--muted); font-size: 13px; }
+.mycard .secret-value { display: inline-flex; gap: 8px 16px; flex-wrap: wrap; }
 
 .timer { margin-bottom: 18px; }
 .timer .top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
@@ -137,12 +153,23 @@ h2.stage-title { margin: 0 0 6px; font-size: 22px; letter-spacing: -.01em; }
   text-align: center; border-radius: 18px; padding: 32px 20px; margin: 8px auto 10px; max-width: 440px;
   border: 2px solid var(--line);
 }
-.role-card.citizen { background: var(--citizen-soft); border-color: var(--citizen); }
-.role-card.liar { background: var(--liar-soft); border-color: var(--liar); }
+.role-card.secret {
+  min-height: 230px; display: grid; place-content: center; gap: 4px;
+  background: var(--surface-2); border-style: dashed;
+}
+.role-card.secret.revealed { border-style: solid; }
+.role-card.revealed.citizen { background: var(--citizen-soft); border-color: var(--citizen); }
+.role-card.revealed.liar { background: var(--liar-soft); border-color: var(--liar); }
+.role-card .secret-mask { display: grid; gap: 6px; justify-items: center; }
+.role-card .lock { font-size: 32px; line-height: 1; }
+.role-card .mask-title { font-size: 18px; font-weight: 800; }
+.role-card .tip { margin: 14px 0 0; color: var(--muted); font-size: 14px; max-width: 340px; }
 .role-card .label { font-size: 13px; font-weight: 700; letter-spacing: .08em; color: var(--muted); }
 .role-card .role { font-size: 30px; font-weight: 800; margin: 4px 0 16px; }
 .role-card.citizen .role { color: var(--citizen); }
 .role-card.liar .role { color: var(--liar); }
+.topic-line { text-align: center; color: var(--muted); margin: 0 0 8px; }
+.topic-line b { color: var(--text); font-size: 18px; margin-left: 6px; }
 .role-card .kv { display: flex; justify-content: center; gap: 28px; flex-wrap: wrap; }
 .role-card .kv div { display: grid; gap: 2px; }
 .role-card .kv span { font-size: 12px; color: var(--muted); }
@@ -617,11 +644,62 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
         h('span', null, h('span', { class: 'k' }, '주제'), h('span', { class: 'v' }, r.topic)),
         h('span', null, h('span', { class: 'k' }, '제시어'), h('span', { class: 'v' }, '결과에서 공개')));
     }
-    return h('div', { class: 'mycard ' + r.role },
-      h('span', null, h('span', { class: 'k' }, '내 역할'), h('span', { class: 'v role' }, r.role === 'liar' ? '라이어' : '시민')),
+    // 주제는 모두가 아는 정보라 그대로, 역할·제시어는 가립니다.
+    return h('div', { class: 'mycard' },
       h('span', null, h('span', { class: 'k' }, '주제'), h('span', { class: 'v' }, r.topic)),
-      h('span', null, h('span', { class: 'k' }, '제시어'), h('span', { class: 'v' }, r.word || '모름 — 힌트로 추측하세요')));
+      secret('mycard',
+        h('span', { class: 'secret-mask' }, `🔒 내 역할·제시어 — ${REVEAL_HINT}`),
+        h('span', { class: 'secret-value' },
+          h('span', null, h('span', { class: 'k' }, '내 역할'), h('span', { class: 'v role ' + r.role }, r.role === 'liar' ? '라이어' : '시민')),
+          h('span', null, h('span', { class: 'k' }, '제시어'), h('span', { class: 'v' }, r.word || '모름 — 힌트로 추측하세요')))));
   }
+
+  // ---------- 가림 처리 (공공장소용) ----------
+  const CAN_HOVER = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  const REVEAL_HINT = CAN_HOVER ? '마우스를 올리면 보여요' : '길게 누르면 보여요';
+  const reveal = { x: -1, y: -1, mouseIn: false, holdKey: null };
+  function secret(key, ...kids) {
+    return h('span', { class: 'secret', 'data-key': key }, kids);
+  }
+  // 화면이 다시 그려져도(다른 사람의 힌트·투표 등) 마우스가 위에 있으면 계속 보이게 합니다.
+  function syncSecrets(target) {
+    let hoverEl = null;
+    if (reveal.mouseIn) {
+      const t = target || (reveal.x >= 0 ? document.elementFromPoint(reveal.x, reveal.y) : null);
+      hoverEl = t && t.closest ? t.closest('.secret') : null;
+    }
+    for (const el of document.querySelectorAll('.secret')) {
+      const on = el === hoverEl || (reveal.holdKey != null && el.dataset.key === reveal.holdKey);
+      el.classList.toggle('revealed', on);
+    }
+  }
+  document.addEventListener('pointermove', (e) => {
+    if (e.pointerType === 'touch') return;
+    reveal.x = e.clientX; reveal.y = e.clientY; reveal.mouseIn = true;
+    syncSecrets(e.target);
+  }, { passive: true });
+  document.addEventListener('mouseout', (e) => {
+    if (!e.relatedTarget) { reveal.mouseIn = false; syncSecrets(); } // 창 밖으로 나감
+  });
+  window.addEventListener('scroll', () => syncSecrets(), { passive: true, capture: true });
+  document.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'touch') return;
+    const s = e.target.closest && e.target.closest('.secret');
+    reveal.holdKey = s ? s.dataset.key : null;
+    syncSecrets();
+  });
+  for (const type of ['pointerup', 'pointercancel']) {
+    document.addEventListener(type, (e) => {
+      if (e.pointerType !== 'touch') return;
+      reveal.holdKey = null;
+      syncSecrets();
+    });
+  }
+  document.addEventListener('contextmenu', (e) => { if (e.target.closest && e.target.closest('.secret')) e.preventDefault(); });
+  // 다른 창으로 가거나 탭을 숨기면 바로 가립니다.
+  const hideAll = () => { reveal.mouseIn = false; reveal.holdKey = null; syncSecrets(); };
+  window.addEventListener('blur', hideAll);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) hideAll(); });
   function timerEl(title) {
     return h('div', { class: 'timer' },
       h('div', { class: 'top' }, h('span', { class: 'title' }, title), h('span', { class: 'secs', id: 'timerSecs' }, '')),
@@ -661,6 +739,7 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
       el.dispatchEvent(new Event('input'));
       if (k.focus) el.focus();
     }
+    syncSecrets();
     tick();
   }
 
@@ -713,17 +792,25 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
         h('div', { class: 'muted' }, r.order.map((id, i) => `${i + 1}. ${nameOf(id)}`).join('   ')),
       ];
     }
-    return [
-      timerEl('역할 확인'),
-      h('div', { class: 'role-card ' + r.role },
+    // 카드 색·문구·크기 모두 가린 상태에서는 라이어와 시민이 똑같습니다.
+    const card = h('div', { class: 'role-card secret ' + r.role, 'data-key': 'rolecard' },
+      h('div', { class: 'secret-mask' },
+        h('div', { class: 'lock' }, '🔒'),
+        h('div', { class: 'mask-title' }, '내 역할과 제시어'),
+        h('div', { class: 'muted small' }, `${REVEAL_HINT} · 주변 사람이 보지 않게 확인하세요`)),
+      h('div', { class: 'secret-value' },
         h('div', { class: 'label' }, '당신은'),
         h('div', { class: 'role' }, liar ? '라이어' : '시민'),
-        h('div', { class: 'kv' },
-          h('div', null, h('span', null, '주제'), h('b', null, r.topic)),
-          liar ? null : h('div', null, h('span', null, '제시어'), h('b', null, r.word)))),
-      h('p', { class: 'stage-sub', style: 'text-align:center' }, liar
-        ? '제시어를 모르는 걸 들키지 마세요. 앞사람들의 힌트를 듣고 어울리는 말을 하세요.'
-        : '제시어를 직접 말하지 말고, 라이어가 눈치채지 못할 만큼만 힌트를 주세요.'),
+        liar ? h('div', { class: 'kv' }, h('div', null, h('span', null, '제시어'), h('b', null, '모름')))
+          : h('div', { class: 'kv' }, h('div', null, h('span', null, '제시어'), h('b', null, r.word))),
+        h('p', { class: 'tip' }, liar
+          ? '제시어를 모르는 걸 들키지 마세요. 앞사람들의 힌트를 듣고 어울리는 말을 하세요.'
+          : '제시어를 직접 말하지 말고, 라이어가 눈치채지 못할 만큼만 힌트를 주세요.')));
+    return [
+      timerEl('역할 확인'),
+      h('p', { class: 'topic-line' }, '주제', h('b', null, r.topic)),
+      card,
+      h('p', { class: 'stage-sub', style: 'text-align:center' }, '역할 확인이 끝난 뒤에도 화면 위쪽 카드에서 다시 볼 수 있어요.'),
       h('div', { class: 'section-label' }, '발표 순서'),
       h('div', { class: 'muted' }, r.order.map((id, i) => `${i + 1}. ${nameOf(id)}`).join('   ')),
     ];
@@ -735,7 +822,7 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
     const mine = turnId === state.me;
     const parts = [myCard(), timerEl(mine ? '내 차례 — 힌트를 한 문장으로' : `${nameOf(turnId)}님의 힌트 차례`)];
     if (mine) {
-      const input = h('input', { id: 'hintInput', type: 'text', maxLength: 100, placeholder: r.role === 'liar' ? '앞사람 힌트에 어울리는 한 문장' : '제시어를 그대로 말하면 안 돼요', autocomplete: 'off' });
+      const input = h('input', { id: 'hintInput', type: 'text', maxLength: 100, placeholder: '한 문장 힌트 (제시어를 그대로 말하면 안 돼요)', autocomplete: 'off' });
       const count = h('span', null, '0');
       input.addEventListener('input', () => { count.textContent = [...input.value].length; });
       const submit = () => { const t = input.value.trim(); if (t) sendMsg({ t: 'hint', text: t }); };
