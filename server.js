@@ -207,6 +207,8 @@ function viewFor(room, me) {
       order: r.order,
       turn: r.turn,
       hints: r.hints,
+      timeVotes: r.timeVotes,
+      timeStep: Math.floor(TIMES.discussion / r.participants.length),
       voted: voting ? [...voteMap.keys()] : [],
       // confirm 단계에서는 true(찬성)/false(반대)
       myVote: voting ? voteMap.get(me.id) ?? null : null,
@@ -250,17 +252,22 @@ function clearPhaseTimer(room) {
   if (room.timer) clearTimeout(room.timer);
   room.timer = null;
 }
+function armTimer(room, ms) {
+  if (room.timer) clearTimeout(room.timer);
+  const onTimeout = room.onTimeout;
+  room.timer = setTimeout(() => {
+    room.timer = null;
+    onTimeout();
+  }, Math.max(0, ms));
+}
+
 function setPhase(room, phase, ms, onTimeout, announce = true) {
   clearPhaseTimer(room);
   room.phase = phase;
   room.duration = ms || null;
   room.deadline = ms ? Date.now() + ms : null;
-  if (ms && onTimeout) {
-    room.timer = setTimeout(() => {
-      room.timer = null;
-      onTimeout();
-    }, ms);
-  }
+  room.onTimeout = onTimeout || null; // 시간 단축 시 타이머를 다시 걸 때 사용
+  if (ms && onTimeout) armTimer(room, ms);
   if (announce) system(room, `${PHASE_LABEL[phase]} 단계가 시작되었습니다.`);
   broadcastState(room);
 }
@@ -300,6 +307,7 @@ function startRound(room, p, ws) {
     revotes: new Map(),
     confirms: new Map(),
     confirmTally: null,
+    timeVotes: {}, // 참가자 id → 'cut'(줄이기) | 'add'(늘리기)
     candidates: null,
     firstTally: null,
     revoteTally: null,
@@ -345,6 +353,32 @@ function submitHint(room, p, ws, raw) {
   if (p.id !== r.liarId && containsWord(text, r)) return err(ws, '제시어(또는 그 별칭)를 그대로 말할 수는 없어요.');
   r.hints.push({ order: r.turn + 1, playerId: p.id, text });
   hintTurn(room, r.turn + 1, false);
+}
+
+// 토론 시간 조절: 참가자마다 라운드당 한 번, 줄이기(cut)나 늘리기(add) 중 하나만.
+// 한 번에 (토론 시간 ÷ 참가자 수)만큼 바뀌고, 모두 줄이기를 누르면 바로 투표로 넘어갑니다.
+function adjustDiscussion(room, p, ws, dir) {
+  const r = room.round;
+  if (dir !== 'cut' && dir !== 'add') return err(ws, '알 수 없는 요청이에요.');
+  if (room.phase !== 'discussion') return err(ws, '토론 중에만 시간을 줄이거나 늘릴 수 있어요.');
+  if (!r.participants.includes(p.id)) return err(ws, '이번 라운드 참가자만 토론 시간을 바꿀 수 있어요.');
+  if (r.timeVotes[p.id]) return err(ws, '토론 시간 줄이기·늘리기는 둘 중 하나만, 한 번만 누를 수 있어요.');
+  r.timeVotes[p.id] = dir;
+  const step = Math.floor(TIMES.discussion / r.participants.length);
+  room.deadline += dir === 'cut' ? -step : step;
+  const left = room.deadline - Date.now();
+  const cuts = Object.values(r.timeVotes).filter((d) => d === 'cut').length;
+  const allCut = cuts >= r.participants.length;
+  const secs = Math.round(step / 1000 / SCALE);
+  system(room, `${p.nickname}님이 토론 시간을 ${secs}초 ${dir === 'cut' ? '줄였어요' : '늘렸어요'}.`);
+  if (allCut || left <= 0) {
+    clearPhaseTimer(room);
+    if (allCut) system(room, '모두 줄이기를 눌러 토론을 마칩니다.');
+    return startVote(room);
+  }
+  if (left > room.duration) room.duration = left; // 늘어난 만큼 타이머 막대도 기준을 키움
+  armTimer(room, left);
+  broadcastState(room);
 }
 
 function startVote(room) {
@@ -768,6 +802,7 @@ function onMessage(ws, data) {
     case 'guess': return submitGuess(room, p, ws, msg.text);
     case 'confirm': return castConfirm(room, p, ws, msg.agree === true);
     case 'react': return onReact(room, p, String(msg.emoji));
+    case 'time': return adjustDiscussion(room, p, ws, msg.dir);
     case 'spectate': return setSpectator(room, p, ws, msg.value);
     case 'points': return setPoints(room, p, ws, msg);
     case 'kick': return kick(room, p, ws, msg.targetId);

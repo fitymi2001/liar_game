@@ -297,6 +297,9 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
 .hmenu button.danger.armed { background: var(--liar); color: #fff; border-color: var(--liar); }
 .slist li.manageable { cursor: pointer; }
 #specMenu .hmenu { margin-top: 8px; }
+.skip-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: -4px 0 6px; }
+.skip-row button { padding: 8px 14px; font-size: 14px; }
+.skip-row .time-done { font-weight: 700; font-size: 14px; padding: 8px 0; }
 .points-card { background: var(--surface-2); border-radius: 12px; padding: 12px 14px; margin: 14px 0; }
 .pt-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 4px 0; }
 .stepper { display: inline-flex; align-items: center; gap: 8px; }
@@ -1250,8 +1253,34 @@ table.tally td.num { font-variant-numeric: tabular-nums; font-weight: 700; }
       h('p', { class: 'stage-sub' }, state.round.role === 'spectator'
         ? '참가자들이 채팅으로 토론하는 중이에요. 관전자는 결과 화면에서 채팅할 수 있어요.'
         : '오른쪽 방 채팅에서 힌트를 근거로 누가 라이어인지, 왜 의심되는지 이야기하세요.'),
+      skipBlock(),
       ...hintBoard(),
     ];
+  }
+
+  // 토론 시간 줄이기/늘리기: 참가자마다 둘 중 하나만 한 번, (토론 시간 ÷ 참가자 수)초씩.
+  // 누르면 버튼이 사라지고 내가 고른 것만 표시됩니다.
+  function skipBlock() {
+    const r = state.round;
+    const total = state.players.filter((p) => p.inRound).length;
+    const votes = Object.values(r.timeVotes);
+    const cuts = votes.filter((d) => d === 'cut').length;
+    const adds = votes.length - cuts;
+    const mine = r.timeVotes[state.me];
+    const secs = Math.round(r.timeStep / 1000);
+    let control = null;
+    if (r.role !== 'spectator') {
+      control = mine
+        ? h('span', { class: 'time-done' }, mine === 'cut' ? `✓ 토론 시간을 ${secs}초 줄였어요` : `✓ 토론 시간을 ${secs}초 늘렸어요`)
+        : [
+          h('button', { class: 'primary', onclick: () => sendMsg({ t: 'time', dir: 'cut' }) }, `⏩ 줄이기 −${secs}초`),
+          h('button', { onclick: () => sendMsg({ t: 'time', dir: 'add' }) }, `⏳ 늘리기 +${secs}초`),
+        ];
+    }
+    return h('div', { class: 'skip-row' },
+      control,
+      h('span', { class: 'muted small' },
+        `줄이기 ${cuts} · 늘리기 ${adds} / ${total}명 — 한 사람당 둘 중 하나만 한 번, 모두 줄이면 바로 투표`));
   }
 
   function voteView() {

@@ -152,7 +152,25 @@ async function main() {
     A.send({ t: 'chat', text: '토론 시작' });
     await B.until((c) => c.chat.some((m) => m.text === '토론 시작')); check('토론 중 채팅 가능');
 
+    // 토론 시간 줄이기/늘리기: 한 사람당 둘 중 하나만 한 번, (토론 시간 ÷ 참가자 수)씩
+    const d0 = A.state.deadline;
+    A.send({ t: 'time', dir: 'cut' });
+    await B.until((c) => Object.keys(c.state.round.timeVotes).length === 1, 3000, 'cut 1');
+    assert.ok(Math.abs((d0 - B.state.deadline) - 2000) < 50, `cut ${d0 - B.state.deadline}`);
+    check('줄이기 → 마감이 (토론 시간 ÷ 참가자 수)만큼 당겨짐');
+    await A.expectError(() => A.send({ t: 'time', dir: 'add' }), /하나만/); check('줄인 사람은 늘리기 불가 (둘 중 하나만)');
+    await A.expectError(() => A.send({ t: 'time', dir: 'cut' }), /한 번만/); check('줄이기는 한 사람당 한 번');
+    B.send({ t: 'time', dir: 'add' });
+    await A.until((c) => Object.keys(c.state.round.timeVotes).length === 2, 3000, 'add 1');
+    assert.ok(Math.abs(A.state.deadline - d0) < 50, `net ${A.state.deadline - d0}`);
+    assert.equal(A.state.round.timeVotes[B.id], 'add');
+    check('늘리기 → 같은 시간만큼 마감이 늦춰짐');
+    C.send({ t: 'time', dir: 'cut' });
+    await A.until((c) => Object.keys(c.state.round.timeVotes).length === 3, 3000, 'cut 2');
+    assert.equal(A.state.phase, 'discussion'); check('한 명이라도 늘렸으면 모두 눌러도 토론 계속');
+
     await A.phase('vote', 9000);
+    await A.expectError(() => A.send({ t: 'time', dir: 'cut' }), /토론 중에만/); check('토론이 아닐 때는 줄이기·늘리기 불가');
     const liar = byId(cs, liarId);
     await liar.expectError(() => liar.send({ t: 'vote', targetId: liarId }), /자기 자신/); check('자기 자신 투표 거부');
     const others = cs.filter((c) => c.id !== liarId);
@@ -182,7 +200,10 @@ async function main() {
     A.send({ t: 'start' });
     await A.phase('discussion', 15000); // 아무도 힌트를 내지 않으면 차례가 계속 넘어감
     assert.ok(A.state.round.hints.every((h) => h.text === null)); check('시간 초과 시 힌트 차례 넘어감');
-    await A.phase('vote', 9000);
+    const tAll = Date.now();
+    for (const c of cs) c.send({ t: 'time', dir: 'cut' });
+    await A.phase('vote', 3000);
+    assert.ok(Date.now() - tAll < 1000); check('모두 줄이기를 누르면 바로 투표로');
     // A→B, B→C, C→A : 1:1:1 동률
     A.send({ t: 'vote', targetId: B.id }); B.send({ t: 'vote', targetId: C.id }); C.send({ t: 'vote', targetId: A.id });
     await A.phase('revote', 3000);
@@ -328,6 +349,7 @@ async function main() {
     await playHints(ps, (c, i) => `${c.name} 힌트 ${i}`);
     await S.phase('discussion');
     await S.expectError(() => S.send({ t: 'chat', text: '저 사람 같아요' }), /참가자만/); check('토론 중 관전자 채팅 차단');
+    await S.expectError(() => S.send({ t: 'time', dir: 'add' }), /참가자만/); check('관전자는 토론 시간 줄이기·늘리기 불가');
     await S.phase('vote', 9000);
     await S.expectError(() => S.send({ t: 'vote', targetId: P1.id }), /참가자만/); check('관전자 투표 불가');
     L.close(); // 관전자의 연결 끊김은 라운드에 영향 없음
